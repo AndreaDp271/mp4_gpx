@@ -522,13 +522,16 @@ function updateLiveMarker(pos) {
   }
 }
 
-videoPreview.addEventListener("timeupdate", () => {
-  if (!gpxAllPoints) return;
+/** Recomputes the live marker from the video's current playback position (even while paused) — used both by 'timeupdate' and whenever start/duration/offset change, so nudging the offset while paused on a frame moves the marker immediately. */
+function syncLiveMarkerFromVideo() {
+  if (!gpxAllPoints || videoPreview.hidden) return;
   const win = getWindowFromInputs();
   if (!win) return;
   const t = new Date(win.start.getTime() + videoPreview.currentTime * 1000);
   updateLiveMarker(positionAtTime(gpxAllPoints, t));
-});
+}
+
+videoPreview.addEventListener("timeupdate", syncLiveMarkerFromVideo);
 
 videoInput.addEventListener("change", async () => {
   const file = videoInput.files[0];
@@ -581,6 +584,7 @@ videoInput.addEventListener("change", async () => {
   }
   updateCropButtonState();
   updateWindowHighlight();
+  syncLiveMarkerFromVideo();
 });
 
 gpxInput.addEventListener("change", async () => {
@@ -613,6 +617,7 @@ gpxInput.addEventListener("change", async () => {
 
     renderFullTrack(gpxAllPoints);
     updateWindowHighlight();
+    syncLiveMarkerFromVideo();
   } catch (e) {
     gpxDocText = null;
     gpxAllPoints = null;
@@ -625,6 +630,7 @@ gpxInput.addEventListener("change", async () => {
 [startInput, durationInput, offsetInput].forEach((el) => el.addEventListener("input", () => {
   updateCropButtonState();
   updateWindowHighlight();
+  syncLiveMarkerFromVideo();
 }));
 
 cropBtn.addEventListener("click", () => {
