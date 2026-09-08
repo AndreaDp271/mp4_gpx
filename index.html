@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GPX / Video Sync</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="page-header">
+  <h1>GPX / Video Sync</h1>
+  <p class="subtitle">Ritaglia una traccia GPX esattamente sulla durata di un video, allineando i timestamp. Tutto avviene nel tuo browser: nessun file viene caricato su un server.</p>
+</header>
+
+<main>
+  <section class="card" id="step-video">
+    <h2><span class="step-num">1</span> Video</h2>
+    <label class="file-drop">
+      <input type="file" id="videoInput" accept="video/mp4,.mp4">
+      <span id="videoFileName">Scegli un file .mp4&hellip;</span>
+    </label>
+    <div id="videoStatus" class="status"></div>
+
+    <div class="field-grid">
+      <label>
+        Inizio video (UTC, ISO 8601)
+        <input type="text" id="startInput" placeholder="2026-09-05T10:30:14.000Z">
+      </label>
+      <label>
+        Durata video (secondi, o mm:ss / hh:mm:ss)
+        <input type="text" id="durationInput" placeholder="378.667">
+      </label>
+      <label>
+        Offset di sincronizzazione (secondi)
+        <input type="number" id="offsetInput" value="0" step="0.1">
+      </label>
+    </div>
+    <div id="filenameCandidate" class="hint"></div>
+  </section>
+
+  <section class="card" id="step-gpx">
+    <h2><span class="step-num">2</span> Traccia GPX</h2>
+    <label class="file-drop">
+      <input type="file" id="gpxInput" accept=".gpx,application/gpx+xml">
+      <span id="gpxFileName">Scegli un file .gpx&hellip;</span>
+    </label>
+    <div id="gpxStatus" class="status"></div>
+  </section>
+
+  <section class="card" id="step-crop">
+    <h2><span class="step-num">3</span> Ritaglia e scarica</h2>
+    <button id="cropBtn" disabled>Ritaglia GPX</button>
+    <div id="cropStatus" class="status"></div>
+    <div id="timeline" class="timeline" hidden>
+      <div class="timeline-track">
+        <div class="timeline-window" id="timelineWindow"></div>
+      </div>
+      <div class="timeline-labels">
+        <span id="timelineFullStart"></span>
+        <span id="timelineFullEnd"></span>
+      </div>
+    </div>
+    <a id="downloadBtn" class="button-link" hidden download>Scarica GPX ritagliato</a>
+  </section>
+</main>
+
+<footer>
+  <p>Funziona interamente offline nel browser (parsing dei box MP4 e del GPX via JavaScript). Nessun dato lascia il tuo computer.</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
