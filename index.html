@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GPX / Video Sync</title>
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 </head>
 <body>
 <header class="page-header">
@@ -20,6 +22,7 @@
       <span id="videoFileName">Scegli un file .mp4&hellip;</span>
     </label>
     <div id="videoStatus" class="status"></div>
+    <video id="videoPreview" controls hidden></video>
 
     <div class="field-grid">
       <label>
@@ -47,8 +50,14 @@
     <div id="gpxStatus" class="status"></div>
   </section>
 
+  <section class="card" id="step-map" hidden>
+    <h2><span class="step-num">3</span> Mappa</h2>
+    <p class="hint" style="margin-top: 0;">Traccia completa in grigio, tratto coperto dal video in evidenza. Riproduci il video per vedere la posizione avanzare sulla mappa.</p>
+    <div id="map"></div>
+  </section>
+
   <section class="card" id="step-crop">
-    <h2><span class="step-num">3</span> Ritaglia e scarica</h2>
+    <h2><span class="step-num">4</span> Ritaglia e scarica</h2>
     <button id="cropBtn" disabled>Ritaglia GPX</button>
     <div id="cropStatus" class="status"></div>
     <div id="timeline" class="timeline" hidden>
@@ -65,9 +74,11 @@
 </main>
 
 <footer>
-  <p>Funziona interamente offline nel browser (parsing dei box MP4 e del GPX via JavaScript). Nessun dato lascia il tuo computer.</p>
+  <p>Video e GPX vengono letti ed elaborati interamente nel browser: nessun file lascia il tuo computer. Solo la mappa richiede una connessione internet, per scaricare le mattonelle (tile) di OpenStreetMap e la libreria Leaflet.</p>
 </footer>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -342,6 +342,33 @@ function serializeGpx(doc) {
 }
 
 /* ---------------------------------------------------------------------- */
+/* Position lookup (used by the map's live marker while the video plays)  */
+/* ---------------------------------------------------------------------- */
+
+/** Index i such that points[i].time <= t <= points[i+1].time, clamped to the array's range. */
+function findBracketIndex(points, t) {
+  if (t <= points[0].time) return 0;
+  if (t >= points[points.length - 1].time) return points.length - 2;
+  let lo = 0, hi = points.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (points[mid].time <= t) lo = mid; else hi = mid;
+  }
+  return lo;
+}
+
+/** Linearly interpolated {lat, lon} at time `t`, clamped to the track's own time range. */
+function positionAtTime(points, t) {
+  if (!points || points.length === 0) return null;
+  if (points.length === 1) return { lat: points[0].lat, lon: points[0].lon };
+  const i = findBracketIndex(points, t);
+  const a = points[i], b = points[i + 1];
+  const totalMs = b.time - a.time;
+  const frac = totalMs === 0 ? 0 : Math.max(0, Math.min(1, (t - a.time) / totalMs));
+  return { lat: a.lat + (b.lat - a.lat) * frac, lon: a.lon + (b.lon - a.lon) * frac };
+}
+
+/* ---------------------------------------------------------------------- */
 /* Duration parsing (accepts seconds, mm:ss, hh:mm:ss)                    */
 /* ---------------------------------------------------------------------- */
 
@@ -363,6 +390,7 @@ function parseDurationSeconds(str) {
 const videoInput = document.getElementById("videoInput");
 const videoFileName = document.getElementById("videoFileName");
 const videoStatus = document.getElementById("videoStatus");
+const videoPreview = document.getElementById("videoPreview");
 const startInput = document.getElementById("startInput");
 const durationInput = document.getElementById("durationInput");
 const offsetInput = document.getElementById("offsetInput");
@@ -371,6 +399,8 @@ const filenameCandidateEl = document.getElementById("filenameCandidate");
 const gpxInput = document.getElementById("gpxInput");
 const gpxFileName = document.getElementById("gpxFileName");
 const gpxStatus = document.getElementById("gpxStatus");
+
+const mapSection = document.getElementById("step-map");
 
 const cropBtn = document.getElementById("cropBtn");
 const cropStatus = document.getElementById("cropStatus");
@@ -382,7 +412,9 @@ const timelineFullEnd = document.getElementById("timelineFullEnd");
 
 let gpxDocText = null; // raw text, re-parsed fresh on each crop so repeated crops don't compound mutations
 let gpxPointsRange = null; // {first: Date, last: Date}
+let gpxAllPoints = null; // sorted [{time, lat, lon, ...}] across the whole GPX, used by the map
 let currentVideoFile = null;
+let currentVideoObjectUrl = null;
 
 function setStatus(el, text, kind) {
   el.textContent = text;
@@ -393,6 +425,111 @@ function updateCropButtonState() {
   cropBtn.disabled = !(gpxDocText && startInput.value.trim() && durationInput.value.trim());
 }
 
+/** Reads start/duration/offset from the form; returns {start, end} Dates, or null if incomplete/invalid. */
+function getWindowFromInputs() {
+  const startTime = new Date(startInput.value.trim());
+  if (Number.isNaN(startTime.getTime())) return null;
+  const durationSeconds = parseDurationSeconds(durationInput.value);
+  if (Number.isNaN(durationSeconds) || durationSeconds <= 0) return null;
+  const offsetSeconds = parseFloat(offsetInput.value) || 0;
+  const start = new Date(startTime.getTime() + offsetSeconds * 1000);
+  const end = new Date(start.getTime() + durationSeconds * 1000);
+  return { start, end };
+}
+
+/* ---- Map (Leaflet + OpenStreetMap tiles; degrades quietly if unavailable) ---- */
+
+const mapAvailable = typeof L !== "undefined";
+let map = null;
+let fullPolyline = null;
+let windowPolyline = null;
+let startMarker = null;
+let endMarker = null;
+let liveMarker = null;
+
+function ensureMap() {
+  if (!mapAvailable || map) return;
+  map = L.map("map");
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  }).addTo(map);
+}
+
+function downsample(points, maxCount) {
+  if (points.length <= maxCount) return points;
+  const step = points.length / maxCount;
+  const out = [];
+  for (let i = 0; i < points.length; i += step) out.push(points[Math.floor(i)]);
+  if (out[out.length - 1] !== points[points.length - 1]) out.push(points[points.length - 1]);
+  return out;
+}
+
+function renderFullTrack(points) {
+  if (!mapAvailable) return;
+  ensureMap();
+  mapSection.hidden = false;
+  setTimeout(() => map.invalidateSize(), 0); // container was `hidden`, Leaflet needs a visible box to size itself
+
+  const latlngs = downsample(points, 3000).map((p) => [p.lat, p.lon]);
+  if (fullPolyline) map.removeLayer(fullPolyline);
+  fullPolyline = L.polyline(latlngs, { color: "#9a9aa2", weight: 3, opacity: 0.8 }).addTo(map);
+  map.fitBounds(fullPolyline.getBounds(), { padding: [20, 20] });
+}
+
+/** Redraws the accent-colored sub-track for the current start/duration/offset window. */
+function updateWindowHighlight() {
+  if (!mapAvailable || !map || !gpxAllPoints) return;
+
+  if (windowPolyline) { map.removeLayer(windowPolyline); windowPolyline = null; }
+  if (startMarker) { map.removeLayer(startMarker); startMarker = null; }
+  if (endMarker) { map.removeLayer(endMarker); endMarker = null; }
+
+  const win = getWindowFromInputs();
+  if (!win) return;
+
+  const within = gpxAllPoints.filter((p) => p.time >= win.start && p.time <= win.end);
+  const startPos = positionAtTime(gpxAllPoints, win.start);
+  const endPos = positionAtTime(gpxAllPoints, win.end);
+
+  const latlngs = [];
+  if (startPos) latlngs.push([startPos.lat, startPos.lon]);
+  for (const p of within) latlngs.push([p.lat, p.lon]);
+  if (endPos) latlngs.push([endPos.lat, endPos.lon]);
+  if (latlngs.length < 2) return;
+
+  windowPolyline = L.polyline(latlngs, { color: "#2563eb", weight: 4 }).addTo(map);
+  if (startPos) {
+    startMarker = L.circleMarker([startPos.lat, startPos.lon], {
+      radius: 6, color: "#15803d", fillColor: "#15803d", fillOpacity: 1,
+    }).addTo(map).bindTooltip("Inizio");
+  }
+  if (endPos) {
+    endMarker = L.circleMarker([endPos.lat, endPos.lon], {
+      radius: 6, color: "#b91c1c", fillColor: "#b91c1c", fillOpacity: 1,
+    }).addTo(map).bindTooltip("Fine");
+  }
+}
+
+function updateLiveMarker(pos) {
+  if (!mapAvailable || !map || !pos) return;
+  if (!liveMarker) {
+    liveMarker = L.marker([pos.lat, pos.lon], {
+      icon: L.divIcon({ className: "map-marker", iconSize: [14, 14] }),
+    }).addTo(map);
+  } else {
+    liveMarker.setLatLng([pos.lat, pos.lon]);
+  }
+}
+
+videoPreview.addEventListener("timeupdate", () => {
+  if (!gpxAllPoints) return;
+  const win = getWindowFromInputs();
+  if (!win) return;
+  const t = new Date(win.start.getTime() + videoPreview.currentTime * 1000);
+  updateLiveMarker(positionAtTime(gpxAllPoints, t));
+});
+
 videoInput.addEventListener("change", async () => {
   const file = videoInput.files[0];
   if (!file) return;
@@ -402,6 +539,11 @@ videoInput.addEventListener("change", async () => {
   filenameCandidateEl.textContent = "";
   downloadBtn.hidden = true;
   timelineEl.hidden = true;
+
+  if (currentVideoObjectUrl) URL.revokeObjectURL(currentVideoObjectUrl);
+  currentVideoObjectUrl = URL.createObjectURL(file);
+  videoPreview.src = currentVideoObjectUrl;
+  videoPreview.hidden = false;
 
   try {
     const result = await analyzeVideo(file);
@@ -415,6 +557,15 @@ videoInput.addEventListener("change", async () => {
       }
       setStatus(videoStatus, msg, "ok");
     } else {
+      // Fall back to the browser's own decoder for the duration, since our mvhd parser found nothing.
+      videoPreview.addEventListener("loadedmetadata", () => {
+        if (!durationInput.value.trim() && Number.isFinite(videoPreview.duration)) {
+          durationInput.value = videoPreview.duration.toFixed(3);
+          setStatus(videoStatus, `mvhd non leggibile: durata (${videoPreview.duration.toFixed(3)} s) presa dal player. Inserisci l'inizio manualmente.`, "warn");
+          updateCropButtonState();
+          updateWindowHighlight();
+        }
+      }, { once: true });
       setStatus(videoStatus, "Impossibile leggere mvhd. Inserisci inizio e durata manualmente.", "warn");
     }
 
@@ -429,6 +580,7 @@ videoInput.addEventListener("change", async () => {
     setStatus(videoStatus, "Errore: " + e.message, "error");
   }
   updateCropButtonState();
+  updateWindowHighlight();
 });
 
 gpxInput.addEventListener("change", async () => {
@@ -450,6 +602,7 @@ gpxInput.addEventListener("change", async () => {
     if (points.length === 0) throw new Error("Nessun trackpoint con timestamp trovato nel file.");
 
     gpxDocText = text;
+    gpxAllPoints = points;
     gpxPointsRange = { first: points[0].time, last: points[points.length - 1].time };
 
     setStatus(
@@ -457,34 +610,33 @@ gpxInput.addEventListener("change", async () => {
       `${points.length} trackpoint, dal ${formatIso(gpxPointsRange.first)} al ${formatIso(gpxPointsRange.last)}.`,
       "ok"
     );
+
+    renderFullTrack(gpxAllPoints);
+    updateWindowHighlight();
   } catch (e) {
     gpxDocText = null;
+    gpxAllPoints = null;
     gpxPointsRange = null;
     setStatus(gpxStatus, "Errore: " + e.message, "error");
   }
   updateCropButtonState();
 });
 
-[startInput, durationInput].forEach((el) => el.addEventListener("input", updateCropButtonState));
+[startInput, durationInput, offsetInput].forEach((el) => el.addEventListener("input", () => {
+  updateCropButtonState();
+  updateWindowHighlight();
+}));
 
 cropBtn.addEventListener("click", () => {
   downloadBtn.hidden = true;
   timelineEl.hidden = true;
 
-  const startTime = new Date(startInput.value.trim());
-  if (Number.isNaN(startTime.getTime())) {
-    setStatus(cropStatus, "Inizio video non valido: usa un formato ISO 8601, es. 2026-09-05T10:30:14.000Z", "error");
+  const win = getWindowFromInputs();
+  if (!win) {
+    setStatus(cropStatus, "Inizio video e/o durata non validi: inizio in formato ISO 8601 (es. 2026-09-05T10:30:14.000Z), durata in secondi.", "error");
     return;
   }
-  const durationSeconds = parseDurationSeconds(durationInput.value);
-  if (Number.isNaN(durationSeconds) || durationSeconds <= 0) {
-    setStatus(cropStatus, "Durata non valida.", "error");
-    return;
-  }
-  const offsetSeconds = parseFloat(offsetInput.value) || 0;
-
-  const windowStart = new Date(startTime.getTime() + offsetSeconds * 1000);
-  const windowEnd = new Date(windowStart.getTime() + durationSeconds * 1000);
+  const { start: windowStart, end: windowEnd } = win;
 
   if (gpxPointsRange && (windowStart < gpxPointsRange.first || windowEnd > gpxPointsRange.last)) {
     setStatus(

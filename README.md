@@ -1,12 +1,18 @@
 # GPX / Video Sync
 
-Web app statica (HTML/CSS/JS puro, nessuna dipendenza) che ritaglia una traccia GPX esterna
+Web app statica (HTML/CSS/JS puro, nessuna build) che ritaglia una traccia GPX esterna
 (Garmin, Strava, telefono, ecc.) esattamente sulla durata di un video, allineando i timestamp.
 
 Tutto avviene **client-side**, nel browser: nessun file viene caricato su un server. Il video
 può essere anche molto grande (GB) perché viene letto tramite `File.slice()` — vengono
 scaricati in memoria solo i pochi byte necessari a trovare e leggere il box `moov` dell'MP4,
 mai l'intero file.
+
+Include anche un'**anteprima video** riproducibile direttamente in pagina e una **mappa**
+(Leaflet + tile OpenStreetMap) con la traccia completa, il tratto coperto dal video evidenziato,
+e un marcatore che avanza in tempo reale seguendo la posizione GPS mentre il video viene
+riprodotto — utile per verificare a occhio che la sincronizzazione sia corretta prima di
+scaricare il file ritagliato.
 
 ## Come funziona
 
@@ -25,6 +31,12 @@ mai l'intero file.
 4. Un campo **offset di sincronizzazione** (in secondi, anche frazionari) permette di
    correggere manualmente un eventuale disallineamento tra l'orologio della camera e quello
    del dispositivo GPS.
+5. **Mappa e anteprima**: appena il GPX è caricato, l'intera traccia viene disegnata su una
+   mappa Leaflet/OpenStreetMap; il tratto corrispondente alla finestra video corrente viene
+   evidenziato e si aggiorna a ogni modifica di inizio/durata/offset. Riproducendo l'anteprima
+   video, un marcatore avanza sulla mappa nella posizione interpolata corrispondente
+   all'istante corrente — un modo rapido per accorgersi visivamente di un eventuale
+   disallineamento prima ancora di scaricare il file.
 
 ## Uso
 
@@ -46,6 +58,13 @@ pubblica la cartella con GitHub Pages (Settings → Pages → Deploy from branch
   manualmente il campo "Inizio video".
 - Pensato per file MP4 (ISO Base Media File Format). Altri contenitori (MOV è generalmente
   compatibile, altri formati proprietari potrebbero non esserlo) non sono garantiti.
+- La mappa richiede una connessione internet (carica Leaflet e le tile OpenStreetMap da CDN
+  esterni); il ritaglio del GPX funziona comunque anche offline, la mappa semplicemente non
+  compare se non c'è connessione.
+- Per video molto grandi la posizione di riproduzione nell'anteprima dipende dal supporto del
+  browser/sistema operativo per lo streaming e il seek su file locali di grandi dimensioni;
+  l'analisi dei metadati (`mvhd`) e il ritaglio del GPX non sono invece influenzati dalla
+  dimensione del file.
 
 ## Licenza
 

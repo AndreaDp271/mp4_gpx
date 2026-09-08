@@ -30,6 +30,11 @@
 
 * { box-sizing: border-box; }
 
+/* `display` rules below (buttons, video, map) have equal-or-higher specificity than the
+   UA stylesheet's `[hidden] { display: none }`, which would otherwise silently lose that
+   tie under normal cascade rules — restate it here so hiding always wins. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   background: var(--bg);
@@ -227,6 +232,30 @@ button:disabled {
 
 #downloadBtn {
   margin-top: 1rem;
+}
+
+#videoPreview {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  border-radius: var(--radius);
+  margin-top: 0.9rem;
+  background: black;
+}
+
+#map {
+  height: 340px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.map-marker {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid white;
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 footer {
