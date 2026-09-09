@@ -22,7 +22,6 @@
       <span id="videoFileName">Scegli un file .mp4&hellip;</span>
     </label>
     <div id="videoStatus" class="status"></div>
-    <video id="videoPreview" controls hidden></video>
 
     <div class="field-grid">
       <label>
@@ -50,10 +49,17 @@
     <div id="gpxStatus" class="status"></div>
   </section>
 
-  <section class="card" id="step-map" hidden>
-    <h2><span class="step-num">3</span> Mappa</h2>
-    <p class="hint" style="margin-top: 0;">Traccia completa in grigio, tratto coperto dal video in evidenza. Riproduci il video per vedere la posizione avanzare sulla mappa.</p>
-    <div id="map"></div>
+  <section class="card" id="step-preview" hidden>
+    <h2><span class="step-num">3</span> Anteprima</h2>
+    <p class="hint" style="margin-top: 0;">Traccia completa in grigio, tratto coperto dal video in evidenza. Riproduci il video per vedere la posizione avanzare sulla mappa, affiancata in tempo reale.</p>
+    <div class="preview-grid">
+      <div class="preview-col">
+        <video id="videoPreview" controls hidden></video>
+      </div>
+      <div class="preview-col">
+        <div id="map"></div>
+      </div>
+    </div>
   </section>
 
   <section class="card" id="step-crop">

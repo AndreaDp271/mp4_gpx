@@ -8,11 +8,12 @@ può essere anche molto grande (GB) perché viene letto tramite `File.slice()` �
 scaricati in memoria solo i pochi byte necessari a trovare e leggere il box `moov` dell'MP4,
 mai l'intero file.
 
-Include anche un'**anteprima video** riproducibile direttamente in pagina e una **mappa**
-(Leaflet, con vista stradale OpenStreetMap o satellitare Esri World Imagery, selezionabili) con
-la traccia completa, il tratto coperto dal video evidenziato, e un marcatore che avanza in tempo
-reale seguendo la posizione GPS mentre il video viene riprodotto — utile per verificare a occhio
-che la sincronizzazione sia corretta prima di scaricare il file ritagliato.
+Include anche un'**anteprima video** e una **mappa** (Leaflet, con vista stradale OpenStreetMap
+o satellitare Esri World Imagery, selezionabili), affiancate in due riquadri 16:9 uno di fianco
+all'altro. La mappa mostra la traccia completa, il tratto coperto dal video evidenziato, e un
+marcatore che avanza in tempo reale seguendo la posizione GPS mentre il video viene riprodotto (o
+anche da fermo, spostando il campo offset) — utile per verificare a occhio che la sincronizzazione
+sia corretta prima di scaricare il file ritagliato.
 
 ## Come funziona
 

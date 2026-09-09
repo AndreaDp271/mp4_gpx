@@ -400,7 +400,7 @@ const gpxInput = document.getElementById("gpxInput");
 const gpxFileName = document.getElementById("gpxFileName");
 const gpxStatus = document.getElementById("gpxStatus");
 
-const mapSection = document.getElementById("step-map");
+const previewSection = document.getElementById("step-preview");
 
 const cropBtn = document.getElementById("cropBtn");
 const cropStatus = document.getElementById("cropStatus");
@@ -493,9 +493,9 @@ function downsample(points, maxCount) {
 }
 
 function renderFullTrack(points) {
+  previewSection.hidden = false; // shared with the video player, so show it even if the map itself can't load
   if (!mapAvailable) return;
   ensureMap();
-  mapSection.hidden = false;
   setTimeout(() => map.invalidateSize(), 0); // container was `hidden`, Leaflet needs a visible box to size itself
 
   const latlngs = downsample(points, 3000).map((p) => [p.lat, p.lon]);
@@ -574,6 +574,7 @@ videoInput.addEventListener("change", async () => {
   currentVideoObjectUrl = URL.createObjectURL(file);
   videoPreview.src = currentVideoObjectUrl;
   videoPreview.hidden = false;
+  previewSection.hidden = false;
 
   try {
     const result = await analyzeVideo(file);
