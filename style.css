@@ -44,7 +44,7 @@ body {
 }
 
 .page-header {
-  max-width: 1080px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 2.5rem 1.5rem 1rem;
   text-align: center;
@@ -62,7 +62,7 @@ body {
 }
 
 main {
-  max-width: 1080px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 0 1.5rem 3rem;
   display: flex;
@@ -120,13 +120,9 @@ main {
 
 .field-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 0.9rem;
   margin-top: 1rem;
-}
-
-@media (max-width: 620px) {
-  .field-grid { grid-template-columns: 1fr; }
 }
 
 label {
@@ -203,8 +199,25 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.sync-row {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  margin-top: 1.25rem;
+}
+
+.offset-label {
+  flex: 0 0 auto;
+  width: 200px;
+}
+
+.offset-label input {
+  width: 100%;
+}
+
 .timeline {
-  margin-top: 1rem;
+  flex: 1 1 280px;
 }
 
 .timeline-track {
@@ -276,7 +289,7 @@ button:disabled {
 }
 
 footer {
-  max-width: 1080px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 0 1.5rem 2.5rem;
   text-align: center;

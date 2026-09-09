@@ -32,10 +32,6 @@
         Durata video (secondi, o mm:ss / hh:mm:ss)
         <input type="text" id="durationInput" placeholder="378.667">
       </label>
-      <label>
-        Offset di sincronizzazione (secondi)
-        <input type="number" id="offsetInput" value="0" step="0.1">
-      </label>
     </div>
     <div id="filenameCandidate" class="hint"></div>
   </section>
@@ -60,21 +56,28 @@
         <div id="map"></div>
       </div>
     </div>
+
+    <div class="sync-row">
+      <label class="offset-label">
+        Offset di sincronizzazione (secondi)
+        <input type="number" id="offsetInput" value="0" step="0.1">
+      </label>
+      <div id="timeline" class="timeline" hidden>
+        <div class="timeline-track">
+          <div class="timeline-window" id="timelineWindow"></div>
+        </div>
+        <div class="timeline-labels">
+          <span id="timelineFullStart"></span>
+          <span id="timelineFullEnd"></span>
+        </div>
+      </div>
+    </div>
   </section>
 
   <section class="card" id="step-crop">
     <h2><span class="step-num">4</span> Ritaglia e scarica</h2>
     <button id="cropBtn" disabled>Ritaglia GPX</button>
     <div id="cropStatus" class="status"></div>
-    <div id="timeline" class="timeline" hidden>
-      <div class="timeline-track">
-        <div class="timeline-window" id="timelineWindow"></div>
-      </div>
-      <div class="timeline-labels">
-        <span id="timelineFullStart"></span>
-        <span id="timelineFullEnd"></span>
-      </div>
-    </div>
     <a id="downloadBtn" class="button-link" hidden download>Scarica GPX ritagliato</a>
   </section>
 </main>

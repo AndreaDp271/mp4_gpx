@@ -437,6 +437,22 @@ function getWindowFromInputs() {
   return { start, end };
 }
 
+/** Redraws the full-span/current-window bar right below the preview, live as inputs change. */
+function updateTimelineBar() {
+  if (!gpxPointsRange) { timelineEl.hidden = true; return; }
+  const win = getWindowFromInputs();
+  if (!win) { timelineEl.hidden = true; return; }
+
+  const fullSpan = gpxPointsRange.last - gpxPointsRange.first;
+  const winStartPct = Math.max(0, Math.min(100, ((win.start - gpxPointsRange.first) / fullSpan) * 100));
+  const winEndPct = Math.max(0, Math.min(100, ((win.end - gpxPointsRange.first) / fullSpan) * 100));
+  timelineWindowEl.style.left = winStartPct + "%";
+  timelineWindowEl.style.width = Math.max(0.5, winEndPct - winStartPct) + "%";
+  timelineFullStart.textContent = formatIso(gpxPointsRange.first);
+  timelineFullEnd.textContent = formatIso(gpxPointsRange.last);
+  timelineEl.hidden = false;
+}
+
 /* ---- Map (Leaflet + OpenStreetMap tiles; degrades quietly if unavailable) ---- */
 
 const mapAvailable = typeof L !== "undefined";
@@ -568,7 +584,6 @@ videoInput.addEventListener("change", async () => {
   setStatus(videoStatus, "Lettura dei metadati MP4 in corso…");
   filenameCandidateEl.textContent = "";
   downloadBtn.hidden = true;
-  timelineEl.hidden = true;
 
   if (currentVideoObjectUrl) URL.revokeObjectURL(currentVideoObjectUrl);
   currentVideoObjectUrl = URL.createObjectURL(file);
@@ -595,6 +610,7 @@ videoInput.addEventListener("change", async () => {
           setStatus(videoStatus, `mvhd non leggibile: durata (${videoPreview.duration.toFixed(3)} s) presa dal player. Inserisci l'inizio manualmente.`, "warn");
           updateCropButtonState();
           updateWindowHighlight();
+          updateTimelineBar();
         }
       }, { once: true });
       setStatus(videoStatus, "Impossibile leggere mvhd. Inserisci inizio e durata manualmente.", "warn");
@@ -612,6 +628,7 @@ videoInput.addEventListener("change", async () => {
   }
   updateCropButtonState();
   updateWindowHighlight();
+  updateTimelineBar();
   syncLiveMarkerFromVideo();
 });
 
@@ -621,7 +638,6 @@ gpxInput.addEventListener("change", async () => {
   gpxFileName.textContent = file.name;
   setStatus(gpxStatus, "Lettura del GPX in corso…");
   downloadBtn.hidden = true;
-  timelineEl.hidden = true;
 
   try {
     const text = await file.text();
@@ -645,11 +661,13 @@ gpxInput.addEventListener("change", async () => {
 
     renderFullTrack(gpxAllPoints);
     updateWindowHighlight();
+    updateTimelineBar();
     syncLiveMarkerFromVideo();
   } catch (e) {
     gpxDocText = null;
     gpxAllPoints = null;
     gpxPointsRange = null;
+    timelineEl.hidden = true;
     setStatus(gpxStatus, "Errore: " + e.message, "error");
   }
   updateCropButtonState();
@@ -658,12 +676,12 @@ gpxInput.addEventListener("change", async () => {
 [startInput, durationInput, offsetInput].forEach((el) => el.addEventListener("input", () => {
   updateCropButtonState();
   updateWindowHighlight();
+  updateTimelineBar();
   syncLiveMarkerFromVideo();
 }));
 
 cropBtn.addEventListener("click", () => {
   downloadBtn.hidden = true;
-  timelineEl.hidden = true;
 
   const win = getWindowFromInputs();
   if (!win) {
@@ -706,17 +724,6 @@ cropBtn.addEventListener("click", () => {
       `da ${formatIso(firstTime)} a ${formatIso(lastTime)} — durata ${actualDuration.toFixed(3)} s.`,
       "ok"
     );
-
-    if (gpxPointsRange) {
-      const fullSpan = gpxPointsRange.last - gpxPointsRange.first;
-      const winStartPct = Math.max(0, Math.min(100, ((windowStart - gpxPointsRange.first) / fullSpan) * 100));
-      const winEndPct = Math.max(0, Math.min(100, ((windowEnd - gpxPointsRange.first) / fullSpan) * 100));
-      timelineWindowEl.style.left = winStartPct + "%";
-      timelineWindowEl.style.width = Math.max(0.5, winEndPct - winStartPct) + "%";
-      timelineFullStart.textContent = formatIso(gpxPointsRange.first);
-      timelineFullEnd.textContent = formatIso(gpxPointsRange.last);
-      timelineEl.hidden = false;
-    }
   } catch (e) {
     setStatus(cropStatus, "Errore durante il ritaglio: " + e.message, "error");
   }
