@@ -9,10 +9,10 @@ scaricati in memoria solo i pochi byte necessari a trovare e leggere il box `moo
 mai l'intero file.
 
 Include anche un'**anteprima video** riproducibile direttamente in pagina e una **mappa**
-(Leaflet + tile OpenStreetMap) con la traccia completa, il tratto coperto dal video evidenziato,
-e un marcatore che avanza in tempo reale seguendo la posizione GPS mentre il video viene
-riprodotto — utile per verificare a occhio che la sincronizzazione sia corretta prima di
-scaricare il file ritagliato.
+(Leaflet, con vista stradale OpenStreetMap o satellitare Esri World Imagery, selezionabili) con
+la traccia completa, il tratto coperto dal video evidenziato, e un marcatore che avanza in tempo
+reale seguendo la posizione GPS mentre il video viene riprodotto — utile per verificare a occhio
+che la sincronizzazione sia corretta prima di scaricare il file ritagliato.
 
 ## Come funziona
 

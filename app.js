@@ -450,10 +450,37 @@ let liveMarker = null;
 function ensureMap() {
   if (!mapAvailable || map) return;
   map = L.map("map");
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+
+  const streetLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
   }).addTo(map);
+
+  const satelliteLayer = L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    {
+      maxZoom: 19,
+      attribution: "Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS user community",
+    }
+  );
+
+  // Dedicated pane between the base tiles (z 200) and our track/marker overlay (z 400),
+  // so place-name labels sit on top of the imagery but under the GPX track and markers.
+  map.createPane("satelliteLabelsPane");
+  map.getPane("satelliteLabelsPane").style.zIndex = 350;
+  map.getPane("satelliteLabelsPane").style.pointerEvents = "none";
+
+  const satelliteLabels = L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+    { maxZoom: 19, pane: "satelliteLabelsPane" }
+  );
+  const satelliteWithLabels = L.layerGroup([satelliteLayer, satelliteLabels]);
+
+  L.control.layers(
+    { "Mappa": streetLayer, "Satellite": satelliteWithLabels },
+    {},
+    { position: "topright" }
+  ).addTo(map);
 }
 
 function downsample(points, maxCount) {
