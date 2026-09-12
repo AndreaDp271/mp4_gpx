@@ -641,6 +641,7 @@ const durationInput = document.getElementById("durationInput");
 const offsetInput = document.getElementById("offsetInput");
 const filenameCandidateEl = document.getElementById("filenameCandidate");
 const offsetHintEl = document.getElementById("offsetHint");
+const playbackRateSelect = document.getElementById("playbackRateSelect");
 
 const gpxInput = document.getElementById("gpxInput");
 const gpxFileName = document.getElementById("gpxFileName");
@@ -878,6 +879,10 @@ function syncLiveMarkerFromVideo() {
 
 videoPreview.addEventListener("timeupdate", syncLiveMarkerFromVideo);
 
+playbackRateSelect.addEventListener("change", () => {
+  videoPreview.playbackRate = parseFloat(playbackRateSelect.value) || 1;
+});
+
 videoInput.addEventListener("change", async () => {
   const file = videoInput.files[0];
   if (!file) return;
@@ -895,6 +900,7 @@ videoInput.addEventListener("change", async () => {
   if (currentVideoObjectUrl) URL.revokeObjectURL(currentVideoObjectUrl);
   currentVideoObjectUrl = URL.createObjectURL(file);
   videoPreview.src = currentVideoObjectUrl;
+  videoPreview.playbackRate = parseFloat(playbackRateSelect.value) || 1;
   videoPreview.hidden = false;
   previewSection.hidden = false;
 
