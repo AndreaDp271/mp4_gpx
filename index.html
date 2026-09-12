@@ -91,6 +91,14 @@
       <div id="fixVideoStatus" class="status"></div>
       <a id="fixVideoDownloadBtn" class="button-link" hidden download>Scarica video con orario corretto</a>
     </div>
+
+    <div class="export-option">
+      <h3>Oppure: incorpora il GPS nel video (come le GoPro)</h3>
+      <p class="hint" style="margin-top: 0;">Aggiunge al video una traccia dati "CAMM" (lo standard aperto di Google usato anche da Insta360/Ricoh, riconosciuto nativamente da Mapillary) con i punti GPS della finestra selezionata. Video e audio non vengono ricodificati, e il file GPX resta intero e non modificato. Funziona solo se il box "moov" del file è l'ultimo (tipico di GoPro/DJI/action cam); per i file "faststart" (moov all'inizio) non è supportato.</p>
+      <button id="embedBtn" disabled>Incorpora traccia GPS (CAMM)</button>
+      <div id="embedStatus" class="status"></div>
+      <a id="embedDownloadBtn" class="button-link" hidden download>Scarica video con GPS incorporato</a>
+    </div>
   </section>
 </main>
 

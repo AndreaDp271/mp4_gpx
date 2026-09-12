@@ -348,6 +348,236 @@ function serializeGpx(doc) {
 }
 
 /* ---------------------------------------------------------------------- */
+/* CAMM track embedding (Camera Motion Metadata — same open format Google */
+/* defined for Street View, natively read by Mapillary/Insta360/etc.)     */
+/* Adds a GPS-only ('MIN_GPS') camm track built from the full GPX, without */
+/* re-encoding or touching any existing track. Only supported when 'moov' */
+/* is the last top-level box (true for typical GoPro/DJI/action-cam MP4s), */
+/* since then the new mdat+moov can simply replace it at the file's tail   */
+/* without shifting — and invalidating — any existing sample offset.       */
+/* ---------------------------------------------------------------------- */
+
+function concatBytes(parts) {
+  let total = 0;
+  for (const p of parts) total += p.byteLength;
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const p of parts) {
+    out.set(p instanceof Uint8Array ? p : new Uint8Array(p), offset);
+    offset += p.byteLength;
+  }
+  return out;
+}
+
+function beU16(n) { const b = new Uint8Array(2); new DataView(b.buffer).setUint16(0, n, false); return b; }
+function beU32(n) { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n >>> 0, false); return b; }
+function beU64(n) { const b = new Uint8Array(8); new DataView(b.buffer).setBigUint64(0, BigInt(Math.round(n)), false); return b; }
+function leU16(n) { const b = new Uint8Array(2); new DataView(b.buffer).setUint16(0, n, true); return b; }
+function leF64(n) { const b = new Uint8Array(8); new DataView(b.buffer).setFloat64(0, n, true); return b; }
+function fourcc(type) { const b = new Uint8Array(4); for (let i = 0; i < 4; i++) b[i] = type.charCodeAt(i); return b; }
+
+/** Builds a standard 32-bit-size ISO BMFF box; big enough for everything this app writes. */
+function mkBox(type, contentParts) {
+  const content = concatBytes(contentParts);
+  return concatBytes([beU32(8 + content.length), fourcc(type), content]);
+}
+
+/** One CAMM sample, type 5 "MIN_GPS": reserved(2) + type(2) + lat/lon/alt as little-endian float64. */
+function buildCammMinGpsSample(lat, lon, ele) {
+  return concatBytes([new Uint8Array(2), leU16(5), leF64(lat), leF64(lon), leF64(ele == null ? -1 : ele)]);
+}
+
+function buildCammStsd() {
+  const sampleEntry = mkBox("camm", [new Uint8Array(6), beU16(1)]); // reserved(6) + data_reference_index(1)
+  return mkBox("stsd", [beU32(0), beU32(1), sampleEntry]);
+}
+
+/** Run-length-compresses consecutive equal deltas, as stts requires. */
+function buildCammStts(deltas) {
+  const entries = [];
+  for (const d of deltas) {
+    if (entries.length && entries[entries.length - 1].delta === d) entries[entries.length - 1].count++;
+    else entries.push({ count: 1, delta: d });
+  }
+  const parts = [beU32(0), beU32(entries.length)];
+  for (const e of entries) parts.push(beU32(e.count), beU32(e.delta));
+  return mkBox("stts", parts);
+}
+
+/** All samples are written contiguously as a single chunk. */
+function buildCammStsc(sampleCount) {
+  return mkBox("stsc", [beU32(0), beU32(1), beU32(1), beU32(sampleCount), beU32(1)]);
+}
+
+function buildCammStsz(sampleSize, sampleCount) {
+  return mkBox("stsz", [beU32(0), beU32(sampleSize), beU32(sampleCount)]);
+}
+
+function buildCammCo64(chunkOffset) {
+  return mkBox("co64", [beU32(0), beU32(1), beU64(chunkOffset)]);
+}
+
+function buildCammStbl(sampleCount, sampleSize, chunkOffset, deltas) {
+  return mkBox("stbl", [
+    buildCammStsd(),
+    buildCammStts(deltas),
+    buildCammStsc(sampleCount),
+    buildCammStsz(sampleSize, sampleCount),
+    buildCammCo64(chunkOffset),
+  ]);
+}
+
+function buildCammDinf() {
+  const urlBox = mkBox("url ", [beU32(1)]); // version 0, flags=1 ("self-contained": data is in this file)
+  return mkBox("dinf", [mkBox("dref", [beU32(0), beU32(1), urlBox])]);
+}
+
+function buildCammHdlr() {
+  const name = new TextEncoder().encode("CameraMetadataMotionHandler\0");
+  return mkBox("hdlr", [beU32(0), beU32(0), fourcc("camm"), new Uint8Array(12), name]);
+}
+
+/** Version-1 (64-bit) mdhd; language 21956 is the packed ISO-639-2 code for "und" (undetermined). */
+function buildCammMdhd(timescale, duration, creationTime, modificationTime) {
+  return mkBox("mdhd", [
+    beU32(0x01000000),
+    beU64(creationTime), beU64(modificationTime),
+    beU32(timescale), beU64(duration),
+    beU16(21956), beU16(0),
+  ]);
+}
+
+/** Version-0 tkhd with an identity matrix and zero width/height, matching a non-visual track. */
+function buildCammTkhd(trackId, creationTime, modificationTime) {
+  const parts = [
+    beU32(0),
+    beU32(creationTime), beU32(modificationTime),
+    beU32(trackId), beU32(0),
+    beU32(0xFFFFFFFF), // duration unknown/indeterminate, as recommended by the spec
+    beU32(0), beU32(0),
+    beU16(0), beU16(0), beU16(0), beU16(0),
+  ];
+  for (const v of [0x00010000, 0, 0, 0, 0x00010000, 0, 0, 0, 0x40000000]) parts.push(beU32(v));
+  parts.push(beU32(0), beU32(0)); // width, height
+  return mkBox("tkhd", parts);
+}
+
+function buildCammTrak({ trackId, mediaTimescale, sampleCount, sampleSize, chunkOffset, deltas, creationTime, modificationTime }) {
+  const mediaDuration = deltas.reduce((a, b) => a + b, 0);
+  const tkhd = buildCammTkhd(trackId, creationTime, modificationTime);
+  const mdhd = buildCammMdhd(mediaTimescale, mediaDuration, creationTime, modificationTime);
+  const hdlr = buildCammHdlr();
+  const minf = mkBox("minf", [buildCammDinf(), buildCammStbl(sampleCount, sampleSize, chunkOffset, deltas)]);
+  return mkBox("trak", [tkhd, mkBox("mdia", [mdhd, hdlr, minf])]);
+}
+
+/** Scans a moov buffer for the highest existing track_ID, so the new camm track gets an unused one. */
+function findMaxTrackId(moovBuf) {
+  const dv = new DataView(moovBuf);
+  let maxId = 0;
+  function walk(start, end) {
+    walkBoxes(dv, start, end, (box) => {
+      if (box.type === "tkhd") {
+        let p = box.offset + box.headerLen;
+        const version = dv.getUint8(p);
+        p += 4 + (version === 1 ? 16 : 8);
+        maxId = Math.max(maxId, dv.getUint32(p));
+      }
+      if (CONTAINER_TYPES.has(box.type)) walk(box.offset + box.headerLen, box.offset + box.size);
+    });
+  }
+  walk(0, moovBuf.byteLength);
+  return maxId;
+}
+
+/**
+ * Builds {t (seconds from windowStart), lat, lon, ele} samples covering [windowStart, windowEnd],
+ * boundary-interpolated exactly like cropGpxDoc — so the embedded track and a cropped-GPX export
+ * always agree on what the video's "position at time t" is.
+ */
+function buildCammSamplesFromGpx(points, windowStart, windowEnd) {
+  if (points.length === 0) return [];
+
+  const findBracket = (t) => {
+    for (let i = 0; i < points.length - 1; i++) {
+      if (points[i].time <= t && t <= points[i + 1].time) return [points[i], points[i + 1]];
+    }
+    return null;
+  };
+  const lerp = (a, b, t) => {
+    const totalMs = b.time - a.time;
+    const frac = totalMs === 0 ? 0 : (t - a.time) / totalMs;
+    return {
+      time: t,
+      lat: a.lat + (b.lat - a.lat) * frac,
+      lon: a.lon + (b.lon - a.lon) * frac,
+      ele: a.ele != null && b.ele != null ? a.ele + (b.ele - a.ele) * frac : null,
+    };
+  };
+
+  const raw = [];
+  if (windowStart <= points[0].time) {
+    raw.push(points[0]);
+  } else {
+    const bracket = findBracket(windowStart);
+    if (bracket) raw.push(lerp(bracket[0], bracket[1], windowStart));
+  }
+  for (const p of points) {
+    if (p.time > windowStart && p.time < windowEnd) raw.push(p);
+  }
+  if (windowEnd >= points[points.length - 1].time) {
+    raw.push(points[points.length - 1]);
+  } else {
+    const bracket = findBracket(windowEnd);
+    if (bracket) raw.push(lerp(bracket[0], bracket[1], windowEnd));
+  }
+
+  const startMs = windowStart.getTime();
+  const samples = [];
+  for (const p of raw) {
+    const t = (p.time.getTime() - startMs) / 1000;
+    if (samples.length && t <= samples[samples.length - 1].t) continue; // dedupe/monotonic guard
+    samples.push({ t, lat: p.lat, lon: p.lon, ele: p.ele });
+  }
+  return samples;
+}
+
+/** Assembles the final MP4 Blob: original bytes up to 'moov' unchanged, then the new camm mdat, then the enlarged moov. */
+function buildCammEmbedBlob(file, moovBox, moovBufOriginal, movieTimescale, maxTrackId, samples) {
+  if (moovBox.offset + moovBox.size !== file.size) {
+    throw new Error("Il box 'moov' non è l'ultimo del file (probabile MP4 'faststart'): incorporazione non supportata per questo video.");
+  }
+
+  const mediaTimescale = Math.max(1000, movieTimescale);
+  const deltas = samples.map((s, i) =>
+    i + 1 < samples.length ? Math.round((samples[i + 1].t - s.t) * mediaTimescale) : 0
+  );
+  const sampleBytesList = samples.map((s) => buildCammMinGpsSample(s.lat, s.lon, s.ele));
+  const sampleSize = sampleBytesList[0].length; // always 28 bytes (fixed-size MIN_GPS payload)
+  const mdatContent = concatBytes(sampleBytesList);
+
+  const camMdatStart = moovBox.boxOffset; // replaces the original moov box, which starts right after the unchanged prefix
+  const camMdatDataStart = camMdatStart + 8;
+
+  const trak = buildCammTrak({
+    trackId: maxTrackId + 1,
+    mediaTimescale,
+    sampleCount: samples.length,
+    sampleSize,
+    chunkOffset: camMdatDataStart,
+    deltas,
+    creationTime: 0,
+    modificationTime: 0,
+  });
+
+  const newMdatBox = mkBox("mdat", [mdatContent]);
+  const newMoovBox = mkBox("moov", [moovBufOriginal, trak]);
+  const prefix = file.slice(0, moovBox.boxOffset);
+
+  return new Blob([prefix, newMdatBox, newMoovBox], { type: file.type || "video/mp4" });
+}
+
+/* ---------------------------------------------------------------------- */
 /* Position lookup (used by the map's live marker while the video plays)  */
 /* ---------------------------------------------------------------------- */
 
@@ -414,6 +644,9 @@ const downloadBtn = document.getElementById("downloadBtn");
 const fixVideoBtn = document.getElementById("fixVideoBtn");
 const fixVideoStatus = document.getElementById("fixVideoStatus");
 const fixVideoDownloadBtn = document.getElementById("fixVideoDownloadBtn");
+const embedBtn = document.getElementById("embedBtn");
+const embedStatus = document.getElementById("embedStatus");
+const embedDownloadBtn = document.getElementById("embedDownloadBtn");
 const timelineEl = document.getElementById("timeline");
 const timelineWindowEl = document.getElementById("timelineWindow");
 const timelineFullStart = document.getElementById("timelineFullStart");
@@ -441,6 +674,16 @@ function updateFixVideoButtonState() {
     currentVideoMvhd &&
     currentVideoMvhd.creationTimeFileOffset != null &&
     getCorrectedVideoStart()
+  );
+}
+
+function updateEmbedButtonState() {
+  embedBtn.disabled = !(
+    currentVideoFile &&
+    currentVideoMvhd &&
+    currentVideoMvhd.creationTimeFileOffset != null &&
+    gpxAllPoints &&
+    getWindowFromInputs()
   );
 }
 
@@ -612,6 +855,8 @@ videoInput.addEventListener("change", async () => {
   downloadBtn.hidden = true;
   fixVideoDownloadBtn.hidden = true;
   setStatus(fixVideoStatus, "", "");
+  embedDownloadBtn.hidden = true;
+  setStatus(embedStatus, "", "");
 
   if (currentVideoObjectUrl) URL.revokeObjectURL(currentVideoObjectUrl);
   currentVideoObjectUrl = URL.createObjectURL(file);
@@ -638,6 +883,7 @@ videoInput.addEventListener("change", async () => {
           durationInput.value = videoPreview.duration.toFixed(3);
           setStatus(videoStatus, `mvhd non leggibile: durata (${videoPreview.duration.toFixed(3)} s) presa dal player. Inserisci l'inizio manualmente.`, "warn");
           updateCropButtonState();
+          updateEmbedButtonState();
           updateWindowHighlight();
           updateTimelineBar();
         }
@@ -657,6 +903,7 @@ videoInput.addEventListener("change", async () => {
   }
   updateCropButtonState();
   updateFixVideoButtonState();
+  updateEmbedButtonState();
   updateWindowHighlight();
   updateTimelineBar();
   syncLiveMarkerFromVideo();
@@ -668,6 +915,8 @@ gpxInput.addEventListener("change", async () => {
   gpxFileName.textContent = file.name;
   setStatus(gpxStatus, "Lettura del GPX in corso…");
   downloadBtn.hidden = true;
+  embedDownloadBtn.hidden = true;
+  setStatus(embedStatus, "", "");
 
   try {
     const text = await file.text();
@@ -701,11 +950,13 @@ gpxInput.addEventListener("change", async () => {
     setStatus(gpxStatus, "Errore: " + e.message, "error");
   }
   updateCropButtonState();
+  updateEmbedButtonState();
 });
 
 [startInput, durationInput, offsetInput].forEach((el) => el.addEventListener("input", () => {
   updateCropButtonState();
   updateFixVideoButtonState();
+  updateEmbedButtonState();
   updateWindowHighlight();
   updateTimelineBar();
   syncLiveMarkerFromVideo();
@@ -813,4 +1064,60 @@ fixVideoBtn.addEventListener("click", () => {
     `Il file GPX resta intero e non modificato.`,
     "ok"
   );
+});
+
+/**
+ * Adds a CAMM ('camm') GPS track to the video, built from the full GPX over the current
+ * start/duration/offset window, without re-encoding video/audio and without touching the
+ * GPX. Only works when 'moov' is the file's last top-level box (see buildCammEmbedBlob).
+ */
+embedBtn.addEventListener("click", async () => {
+  embedDownloadBtn.hidden = true;
+
+  const win = getWindowFromInputs();
+  if (!win) {
+    setStatus(embedStatus, "Inizio video e/o durata non validi: inizio in formato ISO 8601 (es. 2026-09-05T10:30:14.000Z), durata in secondi.", "error");
+    return;
+  }
+  if (!currentVideoFile || !currentVideoMvhd || currentVideoMvhd.creationTimeFileOffset == null) {
+    setStatus(embedStatus, "Metadati mvhd non disponibili per questo video: impossibile incorporare la traccia GPS.", "error");
+    return;
+  }
+  if (!gpxAllPoints) {
+    setStatus(embedStatus, "Carica prima un file GPX.", "error");
+    return;
+  }
+
+  setStatus(embedStatus, "Costruzione della traccia CAMM in corso…");
+
+  try {
+    const samples = buildCammSamplesFromGpx(gpxAllPoints, win.start, win.end);
+    if (samples.length < 2) {
+      setStatus(embedStatus, "Nessun punto GPX trovato nella finestra del video: controlla inizio/durata/offset.", "error");
+      return;
+    }
+
+    const file = currentVideoFile;
+    const moovBox = await findTopLevelBox(file, "moov");
+    if (!moovBox) throw new Error("Box 'moov' non trovato.");
+    const moovBufOriginal = await readSlice(file, moovBox.offset, moovBox.size);
+    const maxTrackId = findMaxTrackId(moovBufOriginal);
+
+    const blob = buildCammEmbedBlob(file, moovBox, moovBufOriginal, currentVideoMvhd.timescale, maxTrackId, samples);
+
+    const url = URL.createObjectURL(blob);
+    const baseName = file.name.replace(/\.[^.]+$/, "");
+    embedDownloadBtn.href = url;
+    embedDownloadBtn.download = `${baseName}_camm.mp4`;
+    embedDownloadBtn.hidden = false;
+
+    setStatus(
+      embedStatus,
+      `Traccia CAMM aggiunta con ${samples.length} punti GPS (da ${formatIso(win.start)} a ${formatIso(win.end)}). ` +
+      `Video e audio originali non sono stati ricodificati, e il file GPX resta intero e non modificato.`,
+      "ok"
+    );
+  } catch (e) {
+    setStatus(embedStatus, "Errore: " + e.message, "error");
+  }
 });

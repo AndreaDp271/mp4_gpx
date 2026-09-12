@@ -257,7 +257,8 @@ button:disabled {
   color: var(--text);
 }
 
-#fixVideoDownloadBtn {
+#fixVideoDownloadBtn,
+#embedDownloadBtn {
   margin-top: 1rem;
 }
 
