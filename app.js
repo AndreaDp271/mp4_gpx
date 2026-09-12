@@ -545,7 +545,16 @@ function buildCammSamplesFromGpx(points, windowStart, windowEnd) {
 /** Assembles the final MP4 Blob: original bytes up to 'moov' unchanged, then the new camm mdat, then the enlarged moov. */
 function buildCammEmbedBlob(file, moovBox, moovBufOriginal, movieTimescale, maxTrackId, samples) {
   if (moovBox.offset + moovBox.size !== file.size) {
-    throw new Error("Il box 'moov' non è l'ultimo del file (probabile MP4 'faststart'): incorporazione non supportata per questo video.");
+    throw new Error(
+      "Il box 'moov' (l'indice del file: tracce e posizione di ogni campione audio/video) non è l'ultimo blocco del file, " +
+      "ma precede i dati audio/video veri e propri (layout 'faststart'/web-optimized, tipico di video passati per un editor " +
+      "o esportati per lo streaming). Per aggiungere la traccia GPS senza ricodificare, questo strumento può solo accodare " +
+      "dati in fondo al file — operazione sicura solo se 'moov' è già l'ultimo blocco, perché altrimenti farlo crescere " +
+      "sposterebbe i dati audio/video esistenti invalidandone gli offset e corromperebbe il video. " +
+      "Puoi: 1) ri-muxare il file per spostare 'moov' in fondo, es. con `ffmpeg -i input.mp4 -c copy output.mp4` " +
+      "(senza -movflags faststart) e ritentare su quel file; oppure 2) usare 'Correggi orario video' + GPX intero, " +
+      "che non richiede questo layout."
+    );
   }
 
   const mediaTimescale = Math.max(1000, movieTimescale);
