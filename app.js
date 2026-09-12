@@ -1,6 +1,49 @@
 "use strict";
 
 /* ---------------------------------------------------------------------- */
+/* Theme toggle (persisted override on top of the OS light/dark setting)  */
+/* ---------------------------------------------------------------------- */
+
+(function initThemeToggle() {
+  const THEME_KEY = "gpxVideoSyncTheme";
+  const toggle = document.getElementById("themeToggle");
+  const iconUse = document.getElementById("themeToggleIconUse");
+
+  function getStored() {
+    try { return localStorage.getItem(THEME_KEY); } catch (e) { return null; }
+  }
+  function setStored(value) {
+    try {
+      if (value) localStorage.setItem(THEME_KEY, value);
+      else localStorage.removeItem(THEME_KEY);
+    } catch (e) { /* private browsing / storage disabled — theme just won't persist */ }
+  }
+  function isDarkNow() {
+    const stored = getStored();
+    if (stored === "dark") return true;
+    if (stored === "light") return false;
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+  function apply() {
+    const stored = getStored();
+    if (stored === "dark" || stored === "light") {
+      document.documentElement.setAttribute("data-theme", stored);
+    } else {
+      document.documentElement.removeAttribute("data-theme");
+    }
+    // Icon shows the mode a click would switch TO, not the current one.
+    iconUse.setAttribute("href", isDarkNow() ? "#icon-sun" : "#icon-moon");
+  }
+
+  toggle.addEventListener("click", () => {
+    setStored(isDarkNow() ? "light" : "dark");
+    apply();
+  });
+
+  apply();
+})();
+
+/* ---------------------------------------------------------------------- */
 /* MP4 box parsing (client-side, no upload — reads only small slices)     */
 /* ---------------------------------------------------------------------- */
 

@@ -7,14 +7,17 @@
   --border: #e0e0e2;
   --accent: #2563eb;
   --accent-hover: #1d4ed8;
+  --accent-soft: #e8efff;
   --ok: #15803d;
   --warn: #b45309;
   --error: #b91c1c;
   --radius: 10px;
+  --shadow: 0 1px 2px rgba(20, 20, 30, 0.04);
 }
 
+/* Follows the OS preference by default... */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #17181c;
     --panel: #212227;
     --text: #eaeaec;
@@ -22,10 +25,33 @@
     --border: #33343a;
     --accent: #5b8def;
     --accent-hover: #7ea4f2;
+    --accent-soft: #26314a;
     --ok: #4ade80;
     --warn: #fbbf24;
     --error: #f87171;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
   }
+}
+
+/* ...but the in-page toggle can force either mode regardless of the OS setting. */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #17181c;
+  --panel: #212227;
+  --text: #eaeaec;
+  --muted: #9a9aa2;
+  --border: #33343a;
+  --accent: #5b8def;
+  --accent-hover: #7ea4f2;
+  --accent-soft: #26314a;
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --error: #f87171;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
 }
 
 * { box-sizing: border-box; }
@@ -43,7 +69,31 @@ body {
   line-height: 1.5;
 }
 
+/* ---------------------------------------------------------------------- */
+/* Icons (inline SVG sprite, referenced via <use>) — theme-aware for free  */
+/* since they inherit `currentColor` instead of carrying their own fill.   */
+/* ---------------------------------------------------------------------- */
+
+.icon {
+  width: 1.05em;
+  height: 1.05em;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vertical-align: -0.15em;
+}
+
+.logo-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  color: var(--accent);
+}
+
 .page-header {
+  position: relative;
   margin: 0 auto;
   padding: 2.5rem 2rem 1rem;
   text-align: center;
@@ -52,12 +102,43 @@ body {
 .page-header h1 {
   margin: 0 0 0.5rem;
   font-size: 1.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
 }
 
 .subtitle {
   color: var(--muted);
-  margin: 0;
+  margin: 0 auto;
+  max-width: 46rem;
   font-size: 0.95rem;
+}
+
+.theme-toggle {
+  position: absolute;
+  top: 1.25rem;
+  right: 1.25rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow);
+}
+
+.theme-toggle:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.theme-toggle .icon {
+  width: 1.15em;
+  height: 1.15em;
 }
 
 main {
@@ -72,6 +153,7 @@ main {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  box-shadow: var(--shadow);
   padding: 1.25rem 1.5rem 1.5rem;
 }
 
@@ -81,6 +163,12 @@ main {
   display: flex;
   align-items: center;
   gap: 0.6rem;
+}
+
+.card h2 .icon {
+  color: var(--accent);
+  width: 1.2em;
+  height: 1.2em;
 }
 
 .step-num {
@@ -106,10 +194,18 @@ main {
   cursor: pointer;
   font-size: 0.9rem;
   color: var(--muted);
+  transition: border-color 0.15s, background 0.15s;
 }
 
 .file-drop:hover {
   border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.file-drop .icon {
+  color: var(--accent);
+  width: 1.3em;
+  height: 1.3em;
 }
 
 .file-drop input[type="file"] {
@@ -185,8 +281,11 @@ button, .button-link {
   background: var(--accent);
   color: white;
   cursor: pointer;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   text-decoration: none;
+  transition: background 0.15s;
 }
 
 button:hover, .button-link:hover {
@@ -262,6 +361,13 @@ button:disabled {
   margin: 0 0 0.75rem;
   font-size: 0.9rem;
   color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.export-option h3 .icon {
+  color: var(--accent);
 }
 
 #fixVideoDownloadBtn,
