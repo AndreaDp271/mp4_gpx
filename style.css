@@ -214,6 +214,11 @@ button:disabled {
   width: 100%;
 }
 
+.offset-hint {
+  flex: 1 1 100%;
+  margin-top: 0.35rem;
+}
+
 .timeline {
   flex: 1 1 280px;
 }

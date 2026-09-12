@@ -640,6 +640,7 @@ const startInput = document.getElementById("startInput");
 const durationInput = document.getElementById("durationInput");
 const offsetInput = document.getElementById("offsetInput");
 const filenameCandidateEl = document.getElementById("filenameCandidate");
+const offsetHintEl = document.getElementById("offsetHint");
 
 const gpxInput = document.getElementById("gpxInput");
 const gpxFileName = document.getElementById("gpxFileName");
@@ -694,6 +695,30 @@ function updateEmbedButtonState() {
     gpxAllPoints &&
     getWindowFromInputs()
   );
+}
+
+/** Formats a signed duration in seconds as e.g. "-2 min 15.0 s" or "1 h 3 min 2.5 s". */
+function formatDurationHuman(totalSeconds) {
+  const sign = totalSeconds < 0 ? "-" : "";
+  let s = Math.abs(totalSeconds);
+  const h = Math.floor(s / 3600); s -= h * 3600;
+  const m = Math.floor(s / 60); s -= m * 60;
+  const parts = [];
+  if (h) parts.push(`${h} h`);
+  if (h || m) parts.push(`${m} min`);
+  parts.push(`${s.toFixed(1)} s`);
+  return sign + parts.join(" ");
+}
+
+/** Live readout of the offset field: how big the video/GPX misalignment is, and the resulting corrected video start. */
+function updateOffsetHint() {
+  const offsetSeconds = parseFloat(offsetInput.value) || 0;
+  let text = `Disallineamento video/GPX: ${formatDurationHuman(offsetSeconds)}`;
+  const correctedStart = getCorrectedVideoStart();
+  if (correctedStart) {
+    text += ` — inizio video corretto: ${formatIso(correctedStart)}`;
+  }
+  offsetHintEl.textContent = text;
 }
 
 /** Reads start+offset from the form; returns the offset-corrected start Date, or null if incomplete/invalid. */
@@ -915,6 +940,7 @@ videoInput.addEventListener("change", async () => {
   updateEmbedButtonState();
   updateWindowHighlight();
   updateTimelineBar();
+  updateOffsetHint();
   syncLiveMarkerFromVideo();
 });
 
@@ -968,8 +994,11 @@ gpxInput.addEventListener("change", async () => {
   updateEmbedButtonState();
   updateWindowHighlight();
   updateTimelineBar();
+  updateOffsetHint();
   syncLiveMarkerFromVideo();
 }));
+
+updateOffsetHint();
 
 cropBtn.addEventListener("click", () => {
   downloadBtn.hidden = true;
