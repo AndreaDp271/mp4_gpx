@@ -71,19 +71,26 @@
 </svg>
 
 <header class="page-header">
-  <button id="themeToggle" class="theme-toggle" type="button" title="Cambia tema chiaro/scuro" aria-label="Cambia tema chiaro/scuro">
-    <svg class="icon" aria-hidden="true"><use id="themeToggleIconUse" href="#icon-moon"></use></svg>
-  </button>
+  <div class="header-controls">
+    <select id="langSelect" class="lang-select" title="Language / Lingua" aria-label="Language / Lingua">
+      <option value="auto">Auto</option>
+      <option value="it">Italiano</option>
+      <option value="en">English</option>
+    </select>
+    <button id="themeToggle" class="theme-toggle" type="button" data-i18n-title="header.themeToggleLabel" title="Cambia tema chiaro/scuro" aria-label="Cambia tema chiaro/scuro">
+      <svg class="icon" aria-hidden="true"><use id="themeToggleIconUse" href="#icon-moon"></use></svg>
+    </button>
+  </div>
   <h1>
     <svg class="icon logo-icon" aria-hidden="true"><use href="#icon-map"></use></svg>
     GPX / Video Sync
   </h1>
-  <p class="subtitle">Allinea una traccia GPX (Garmin, Strava, telefono...) a un video: ritagliala sulla sua durata, correggi l'orario nei metadati del video, o incorpora il GPS direttamente nel file MP4 — come fanno GoPro e Insta360. Tutto nel tuo browser: nessun file lascia il tuo computer.</p>
+  <p class="subtitle" data-i18n="header.subtitle">Allinea una traccia GPX (Garmin, Strava, telefono...) a un video: ritagliala sulla sua durata, correggi l'orario nei metadati del video, o incorpora il GPS direttamente nel file MP4 — come fanno GoPro e Insta360. Tutto nel tuo browser: nessun file lascia il tuo computer.</p>
 </header>
 
 <main>
   <section class="card" id="step-video">
-    <h2><span class="step-num">1</span> Video</h2>
+    <h2><span class="step-num">1</span> <span data-i18n="step1.title">Video</span></h2>
     <label class="file-drop">
       <svg class="icon" aria-hidden="true"><use href="#icon-video"></use></svg>
       <input type="file" id="videoInput" accept="video/mp4,.mp4">
@@ -93,11 +100,11 @@
 
     <div class="field-grid">
       <label>
-        Inizio video (UTC, ISO 8601)
+        <span data-i18n="step1.startLabel">Inizio video (UTC, ISO 8601)</span>
         <input type="text" id="startInput" placeholder="2026-09-05T10:30:14.000Z">
       </label>
       <label>
-        Durata video (secondi, o mm:ss / hh:mm:ss)
+        <span data-i18n="step1.durationLabel">Durata video (secondi, o mm:ss / hh:mm:ss)</span>
         <input type="text" id="durationInput" placeholder="378.667">
       </label>
     </div>
@@ -105,7 +112,7 @@
   </section>
 
   <section class="card" id="step-gpx">
-    <h2><span class="step-num">2</span> Traccia GPX</h2>
+    <h2><span class="step-num">2</span> <span data-i18n="step2.title">Traccia GPX</span></h2>
     <label class="file-drop">
       <svg class="icon" aria-hidden="true"><use href="#icon-map-pin"></use></svg>
       <input type="file" id="gpxInput" accept=".gpx,application/gpx+xml">
@@ -115,8 +122,8 @@
   </section>
 
   <section class="card" id="step-preview" hidden>
-    <h2><span class="step-num">3</span> Anteprima <svg class="icon" aria-hidden="true"><use href="#icon-eye"></use></svg></h2>
-    <p class="hint" style="margin-top: 0;">Traccia completa in grigio, tratto coperto dal video in evidenza. Riproduci il video per vedere la posizione avanzare sulla mappa, affiancata in tempo reale — il modo più veloce per accorgersi a occhio se offset e durata sono giusti.</p>
+    <h2><span class="step-num">3</span> <span data-i18n="step3.title">Anteprima</span> <svg class="icon" aria-hidden="true"><use href="#icon-eye"></use></svg></h2>
+    <p class="hint" data-i18n="step3.hint" style="margin-top: 0;">Traccia completa in grigio, tratto coperto dal video in evidenza. Riproduci il video per vedere la posizione avanzare sulla mappa, affiancata in tempo reale — il modo più veloce per accorgersi a occhio se offset e durata sono giusti.</p>
     <div class="preview-grid">
       <div class="preview-col">
         <video id="videoPreview" controls hidden></video>
@@ -128,13 +135,13 @@
 
     <div class="sync-row">
       <label class="offset-label">
-        Offset di sincronizzazione (secondi)
+        <span data-i18n="step3.offsetLabel">Offset di sincronizzazione (secondi)</span>
         <input type="number" id="offsetInput" value="0" step="0.1">
       </label>
       <label class="offset-label">
-        Velocità video
+        <span data-i18n="step3.rateLabel">Velocità video</span>
         <select id="playbackRateSelect">
-          <option value="1" selected>1× (normale)</option>
+          <option value="1" selected data-i18n="step3.rateNormal">1× (normale)</option>
           <option value="0.5">0.5×</option>
           <option value="0.25">0.25×</option>
           <option value="0.1">0.1×</option>
@@ -154,54 +161,54 @@
   </section>
 
   <section class="card" id="step-crop">
-    <h2><span class="step-num">4</span> Sincronizza e scarica</h2>
+    <h2><span class="step-num">4</span> <span data-i18n="step4.title">Sincronizza e scarica</span></h2>
 
     <div class="export-option">
-      <h3><svg class="icon" aria-hidden="true"><use href="#icon-scissors"></use></svg> Ritaglia il GPX sulla durata del video</h3>
-      <p class="hint" style="margin-top: 0;">La scelta più semplice: produce un <code>.gpx</code> più piccolo, tagliato esattamente sulla finestra del video, con un punto interpolato a inizio e fine.</p>
+      <h3><svg class="icon" aria-hidden="true"><use href="#icon-scissors"></use></svg> <span data-i18n="step4.crop.title">Ritaglia il GPX sulla durata del video</span></h3>
+      <p class="hint" data-i18n-html="step4.crop.hintHtml" style="margin-top: 0;">La scelta più semplice: produce un <code>.gpx</code> più piccolo, tagliato esattamente sulla finestra del video, con un punto interpolato a inizio e fine.</p>
       <button id="cropBtn" disabled>
         <svg class="icon" aria-hidden="true"><use href="#icon-scissors"></use></svg>
-        Ritaglia GPX
+        <span data-i18n="step4.crop.btn">Ritaglia GPX</span>
       </button>
       <div id="cropStatus" class="status"></div>
       <a id="downloadBtn" class="button-link" hidden download>
         <svg class="icon" aria-hidden="true"><use href="#icon-download"></use></svg>
-        Scarica GPX ritagliato
+        <span data-i18n="step4.crop.download">Scarica GPX ritagliato</span>
       </a>
     </div>
 
     <div class="export-option">
-      <h3><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg> In alternativa: correggi l'orario del video</h3>
-      <p class="hint" style="margin-top: 0;">Il GPX resta intero, senza alcun ritaglio. Viene invece corretto il "creation time" nei metadati del container MP4, in modo che l'inizio del video combaci con l'inizio + offset impostati sopra.</p>
+      <h3><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg> <span data-i18n="step4.fix.title">In alternativa: correggi l'orario del video</span></h3>
+      <p class="hint" data-i18n="step4.fix.hint" style="margin-top: 0;">Il GPX resta intero, senza alcun ritaglio. Viene invece corretto il "creation time" nei metadati del container MP4, in modo che l'inizio del video combaci con l'inizio + offset impostati sopra.</p>
       <button id="fixVideoBtn" disabled>
         <svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg>
-        Correggi orario video
+        <span data-i18n="step4.fix.btn">Correggi orario video</span>
       </button>
       <div id="fixVideoStatus" class="status"></div>
       <a id="fixVideoDownloadBtn" class="button-link" hidden download>
         <svg class="icon" aria-hidden="true"><use href="#icon-download"></use></svg>
-        Scarica video con orario corretto
+        <span data-i18n="step4.fix.download">Scarica video con orario corretto</span>
       </a>
     </div>
 
     <div class="export-option">
-      <h3><svg class="icon" aria-hidden="true"><use href="#icon-satellite"></use></svg> Oppure: incorpora il GPS nel video (come le GoPro)</h3>
-      <p class="hint" style="margin-top: 0;">Aggiunge al video una traccia dati "CAMM" (lo standard aperto di Google usato anche da Insta360/Ricoh, riconosciuto nativamente da Mapillary) con i punti GPS della finestra selezionata. Video e audio non vengono ricodificati, e il file GPX resta intero e non modificato. Funziona solo se il box "moov" del file è l'ultimo (tipico di GoPro/DJI/action cam); per i file "faststart" (moov all'inizio) non è supportato.</p>
+      <h3><svg class="icon" aria-hidden="true"><use href="#icon-satellite"></use></svg> <span data-i18n="step4.embed.title">Oppure: incorpora il GPS nel video (come le GoPro)</span></h3>
+      <p class="hint" data-i18n="step4.embed.hint" style="margin-top: 0;">Aggiunge al video una traccia dati "CAMM" (lo standard aperto di Google usato anche da Insta360/Ricoh, riconosciuto nativamente da Mapillary) con i punti GPS della finestra selezionata. Video e audio non vengono ricodificati, e il file GPX resta intero e non modificato. Funziona solo se il box "moov" del file è l'ultimo (tipico di GoPro/DJI/action cam); per i file "faststart" (moov all'inizio) non è supportato.</p>
       <button id="embedBtn" disabled>
         <svg class="icon" aria-hidden="true"><use href="#icon-satellite"></use></svg>
-        Incorpora traccia GPS (CAMM)
+        <span data-i18n="step4.embed.btn">Incorpora traccia GPS (CAMM)</span>
       </button>
       <div id="embedStatus" class="status"></div>
       <a id="embedDownloadBtn" class="button-link" hidden download>
         <svg class="icon" aria-hidden="true"><use href="#icon-download"></use></svg>
-        Scarica video con GPS incorporato
+        <span data-i18n="step4.embed.download">Scarica video con GPS incorporato</span>
       </a>
     </div>
   </section>
 </main>
 
 <footer>
-  <p>Video e GPX vengono letti ed elaborati interamente nel browser: nessun file lascia il tuo computer. Solo la mappa richiede una connessione internet, per scaricare le mattonelle (tile) di OpenStreetMap/Esri e la libreria Leaflet.</p>
+  <p data-i18n="footer.text">Video e GPX vengono letti ed elaborati interamente nel browser: nessun file lascia il tuo computer. Solo la mappa richiede una connessione internet, per scaricare le mattonelle (tile) di OpenStreetMap/Esri e la libreria Leaflet.</p>
 </footer>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"

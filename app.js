@@ -1,6 +1,298 @@
 "use strict";
 
 /* ---------------------------------------------------------------------- */
+/* i18n — auto-detects the browser language (with a manual override,      */
+/* persisted), covers every user-facing string. Only it/en are curated;   */
+/* anything else falls back to English rather than guessing.              */
+/* ---------------------------------------------------------------------- */
+
+const SUPPORTED_LANGS = ["it", "en"];
+const LANG_KEY = "gpxVideoSyncLang";
+
+const I18N = {
+  it: {
+    meta: {
+      pageTitle: "GPX / Video Sync",
+      description: "Sincronizza una traccia GPX con un video interamente nel browser: ritaglio, correzione dell'orario o traccia GPS incorporata (CAMM), senza caricare nulla su un server.",
+    },
+    header: {
+      subtitle: "Allinea una traccia GPX (Garmin, Strava, telefono...) a un video: ritagliala sulla sua durata, correggi l'orario nei metadati del video, o incorpora il GPS direttamente nel file MP4 — come fanno GoPro e Insta360. Tutto nel tuo browser: nessun file lascia il tuo computer.",
+      themeToggleLabel: "Cambia tema chiaro/scuro",
+    },
+    step1: {
+      title: "Video",
+      filePrompt: "Scegli un file .mp4…",
+      startLabel: "Inizio video (UTC, ISO 8601)",
+      durationLabel: "Durata video (secondi, o mm:ss / hh:mm:ss)",
+    },
+    step2: {
+      title: "Traccia GPX",
+      filePrompt: "Scegli un file .gpx…",
+    },
+    step3: {
+      title: "Anteprima",
+      hint: "Traccia completa in grigio, tratto coperto dal video in evidenza. Riproduci il video per vedere la posizione avanzare sulla mappa, affiancata in tempo reale — il modo più veloce per accorgersi a occhio se offset e durata sono giusti.",
+      offsetLabel: "Offset di sincronizzazione (secondi)",
+      rateLabel: "Velocità video",
+      rateNormal: "1× (normale)",
+    },
+    step4: {
+      title: "Sincronizza e scarica",
+      crop: {
+        title: "Ritaglia il GPX sulla durata del video",
+        hintHtml: "La scelta più semplice: produce un <code>.gpx</code> più piccolo, tagliato esattamente sulla finestra del video, con un punto interpolato a inizio e fine.",
+        btn: "Ritaglia GPX",
+        download: "Scarica GPX ritagliato",
+      },
+      fix: {
+        title: "In alternativa: correggi l'orario del video",
+        hint: 'Il GPX resta intero, senza alcun ritaglio. Viene invece corretto il "creation time" nei metadati del container MP4, in modo che l\'inizio del video combaci con l\'inizio + offset impostati sopra.',
+        btn: "Correggi orario video",
+        download: "Scarica video con orario corretto",
+      },
+      embed: {
+        title: "Oppure: incorpora il GPS nel video (come le GoPro)",
+        hint: 'Aggiunge al video una traccia dati "CAMM" (lo standard aperto di Google usato anche da Insta360/Ricoh, riconosciuto nativamente da Mapillary) con i punti GPS della finestra selezionata. Video e audio non vengono ricodificati, e il file GPX resta intero e non modificato. Funziona solo se il box "moov" del file è l\'ultimo (tipico di GoPro/DJI/action cam); per i file "faststart" (moov all\'inizio) non è supportato.',
+        btn: "Incorpora traccia GPS (CAMM)",
+        download: "Scarica video con GPS incorporato",
+      },
+    },
+    footer: {
+      text: "Video e GPX vengono letti ed elaborati interamente nel browser: nessun file lascia il tuo computer. Solo la mappa richiede una connessione internet, per scaricare le mattonelle (tile) di OpenStreetMap/Esri e la libreria Leaflet.",
+    },
+    status: {
+      readingVideoMeta: "Lettura dei metadati MP4 in corso…",
+      mvhdDetected: (v) => `Rilevato dal container MP4: inizio ${v.start}, durata ${v.duration} s.`,
+      editListWarning: (v) => `\nAttenzione: trovate edit-list con offset non nullo (${v.offsets} unità) — l'inizio effettivo potrebbe differire leggermente.`,
+      mvhdFallbackDuration: (v) => `mvhd non leggibile: durata (${v.duration} s) presa dal player. Inserisci l'inizio manualmente.`,
+      mvhdUnreadable: "Impossibile leggere mvhd. Inserisci inizio e durata manualmente.",
+      readingGpx: "Lettura del GPX in corso…",
+      gpxLoaded: (v) => `${v.count} trackpoint, dal ${v.first} al ${v.last}.`,
+      cropSuccess: (v) => `${v.cropped} punti nel ritaglio (di cui ${v.interpolated} interpolati ai bordi), da ${v.first} a ${v.last} — durata ${v.duration} s.`,
+      fixSuccess: (v) => `Creation time del video corretto a ${v.correctedStart} (arrotondato al secondo, come richiesto dal formato MP4). Il file GPX resta intero e non modificato.`,
+      buildingCamm: "Costruzione della traccia CAMM in corso…",
+      embedSuccess: (v) => `Traccia CAMM aggiunta con ${v.count} punti GPS (da ${v.start} a ${v.end}). Video e audio originali non sono stati ricodificati, e il file GPX resta intero e non modificato.`,
+    },
+    hint: {
+      filenameCandidate: (v) => `Nome file suggerisce (ora locale della camera): <strong>${v.localStr}</strong> — se il fuso non è UTC, converti manualmente e correggi il campo "Inizio video" sopra.`,
+    },
+    error: {
+      generic: (v) => `Errore: ${v.message}`,
+      noTrackpoints: "Nessun trackpoint con timestamp trovato nel file.",
+      gpxInvalid: (v) => `GPX non valido: ${v.message}`,
+      invalidStartDuration: "Inizio video e/o durata non validi: inizio in formato ISO 8601 (es. 2026-09-05T10:30:14.000Z), durata in secondi.",
+      noPointsInWindowCrop: "Nessun punto trovato nella finestra indicata: controlla inizio/durata/offset.",
+      cropFailed: (v) => `Errore durante il ritaglio: ${v.message}`,
+      invalidVideoStart: "Inizio video non valido: usa formato ISO 8601 (es. 2026-09-05T10:30:14.000Z).",
+      noMvhdForFix: "Metadati mvhd non disponibili per questo video: impossibile correggere l'orario senza ricodificarlo.",
+      dateOutOfRange: "Data fuori dall'intervallo rappresentabile nei metadati MP4 di questo file.",
+      noMvhdForEmbed: "Metadati mvhd non disponibili per questo video: impossibile incorporare la traccia GPS.",
+      noGpxLoaded: "Carica prima un file GPX.",
+      noPointsInWindowEmbed: "Nessun punto GPX trovato nella finestra del video: controlla inizio/durata/offset.",
+      moovNotFoundSimple: "Box 'moov' non trovato.",
+      moovNotFoundAnalyze: "Box 'moov' non trovato: il file potrebbe non essere un MP4 valido o è ancora in fase di scrittura.",
+      moovNotLast:
+        "Il box 'moov' (l'indice del file: tracce e posizione di ogni campione audio/video) non è l'ultimo blocco del file, " +
+        "ma precede i dati audio/video veri e propri (layout 'faststart'/web-optimized, tipico di video passati per un editor " +
+        "o esportati per lo streaming). Per aggiungere la traccia GPS senza ricodificare, questo strumento può solo accodare " +
+        "dati in fondo al file — operazione sicura solo se 'moov' è già l'ultimo blocco, perché altrimenti farlo crescere " +
+        "sposterebbe i dati audio/video esistenti invalidandone gli offset e corromperebbe il video. " +
+        "Puoi: 1) ri-muxare il file per spostare 'moov' in fondo, es. con `ffmpeg -i input.mp4 -c copy output.mp4` " +
+        "(senza -movflags faststart) e ritentare su quel file; oppure 2) usare 'Correggi orario video' + GPX intero, " +
+        "che non richiede questo layout.",
+    },
+    warn: {
+      windowOutsideGpx: (v) =>
+        `Attenzione: la finestra video (${v.windowStart} → ${v.windowEnd}) esce dall'intervallo coperto dal GPX ` +
+        `(${v.gpxFirst} → ${v.gpxLast}). Procedo comunque, ma il ritaglio potrebbe risultare incompleto.`,
+    },
+    offsetHint: {
+      text: (v) => `Disallineamento video/GPX: ${v.duration}`,
+      correctedSuffix: (v) => ` — inizio video corretto: ${v.iso}`,
+    },
+    map: {
+      streetLayer: "Mappa",
+      satelliteLayer: "Satellite",
+      startTooltip: "Inizio",
+      endTooltip: "Fine",
+    },
+  },
+
+  en: {
+    meta: {
+      pageTitle: "GPX / Video Sync",
+      description: "Sync a GPX track with a video entirely in your browser: crop it, fix the video's timestamp, or embed GPS as a CAMM track — nothing is ever uploaded to a server.",
+    },
+    header: {
+      subtitle: "Align a GPX track (Garmin, Strava, phone...) with a video: crop it to the video's duration, fix the timestamp in the video's own metadata, or embed the GPS straight into the MP4 file — the way GoPro and Insta360 do. All in your browser: no file ever leaves your computer.",
+      themeToggleLabel: "Toggle light/dark theme",
+    },
+    step1: {
+      title: "Video",
+      filePrompt: "Choose an .mp4 file…",
+      startLabel: "Video start (UTC, ISO 8601)",
+      durationLabel: "Video duration (seconds, or mm:ss / hh:mm:ss)",
+    },
+    step2: {
+      title: "GPX track",
+      filePrompt: "Choose a .gpx file…",
+    },
+    step3: {
+      title: "Preview",
+      hint: "Full track in gray, the stretch covered by the video highlighted. Play the video to watch the position move on the map alongside it in real time — the quickest way to spot by eye whether offset and duration are right.",
+      offsetLabel: "Sync offset (seconds)",
+      rateLabel: "Playback speed",
+      rateNormal: "1× (normal)",
+    },
+    step4: {
+      title: "Sync and download",
+      crop: {
+        title: "Crop the GPX to the video's duration",
+        hintHtml: "The simplest choice: produces a smaller <code>.gpx</code>, cut exactly to the video's window, with an interpolated point at the start and end.",
+        btn: "Crop GPX",
+        download: "Download cropped GPX",
+      },
+      fix: {
+        title: "Or: fix the video's timestamp",
+        hint: 'The GPX stays whole, no cropping at all. Instead, the "creation time" in the MP4 container\'s metadata gets corrected, so the video\'s start matches the start + offset set above.',
+        btn: "Fix video timestamp",
+        download: "Download video with fixed timestamp",
+      },
+      embed: {
+        title: "Or: embed GPS in the video (like GoPro does)",
+        hint: 'Adds a "CAMM" data track to the video (the open standard Google defined, also used by Insta360/Ricoh, read natively by Mapillary) with the GPS points from the selected window. Video and audio are not re-encoded, and the GPX file stays whole and unmodified. Only works when the file\'s "moov" box is last (typical of GoPro/DJI/action cams); not supported for "faststart" files (moov at the start).',
+        btn: "Embed GPS track (CAMM)",
+        download: "Download video with embedded GPS",
+      },
+    },
+    footer: {
+      text: "Video and GPX are read and processed entirely in your browser: no file ever leaves your computer. Only the map needs an internet connection, to fetch OpenStreetMap/Esri tiles and the Leaflet library.",
+    },
+    status: {
+      readingVideoMeta: "Reading MP4 metadata…",
+      mvhdDetected: (v) => `Detected from the MP4 container: start ${v.start}, duration ${v.duration} s.`,
+      editListWarning: (v) => `\nWarning: found edit lists with a non-zero offset (${v.offsets} units) — the actual start may differ slightly.`,
+      mvhdFallbackDuration: (v) => `mvhd unreadable: duration (${v.duration} s) taken from the player. Enter the start manually.`,
+      mvhdUnreadable: "Unable to read mvhd. Enter start and duration manually.",
+      readingGpx: "Reading GPX…",
+      gpxLoaded: (v) => `${v.count} trackpoints, from ${v.first} to ${v.last}.`,
+      cropSuccess: (v) => `${v.cropped} points in the crop (${v.interpolated} of which interpolated at the edges), from ${v.first} to ${v.last} — duration ${v.duration} s.`,
+      fixSuccess: (v) => `Video creation time fixed to ${v.correctedStart} (rounded to the nearest second, as the MP4 format requires). The GPX file stays whole and unmodified.`,
+      buildingCamm: "Building the CAMM track…",
+      embedSuccess: (v) => `CAMM track added with ${v.count} GPS points (from ${v.start} to ${v.end}). The original video and audio were not re-encoded, and the GPX file stays whole and unmodified.`,
+    },
+    hint: {
+      filenameCandidate: (v) => `Filename suggests (camera's local time): <strong>${v.localStr}</strong> — if the timezone isn't UTC, convert it manually and fix the "Video start" field above.`,
+    },
+    error: {
+      generic: (v) => `Error: ${v.message}`,
+      noTrackpoints: "No timestamped trackpoint found in the file.",
+      gpxInvalid: (v) => `Invalid GPX: ${v.message}`,
+      invalidStartDuration: "Invalid video start and/or duration: start must be ISO 8601 (e.g. 2026-09-05T10:30:14.000Z), duration in seconds.",
+      noPointsInWindowCrop: "No point found in the given window: check start/duration/offset.",
+      cropFailed: (v) => `Error while cropping: ${v.message}`,
+      invalidVideoStart: "Invalid video start: use ISO 8601 format (e.g. 2026-09-05T10:30:14.000Z).",
+      noMvhdForFix: "mvhd metadata unavailable for this video: can't fix the timestamp without re-encoding it.",
+      dateOutOfRange: "Date outside the range representable in this file's MP4 metadata.",
+      noMvhdForEmbed: "mvhd metadata unavailable for this video: can't embed the GPS track.",
+      noGpxLoaded: "Load a GPX file first.",
+      noPointsInWindowEmbed: "No GPX point found in the video's window: check start/duration/offset.",
+      moovNotFoundSimple: "'moov' box not found.",
+      moovNotFoundAnalyze: "'moov' box not found: the file might not be a valid MP4, or it's still being written.",
+      moovNotLast:
+        "The 'moov' box (the file's index: tracks and the position of every audio/video sample) isn't the file's last " +
+        "block — it comes before the actual audio/video data (a 'faststart'/web-optimized layout, typical of videos that " +
+        "went through an editor or were exported for streaming). To add the GPS track without re-encoding, this tool can " +
+        "only append data at the end of the file — safe only when 'moov' is already the last block, because otherwise " +
+        "growing it would shift the existing audio/video data and invalidate its offsets, corrupting the video. You can: " +
+        "1) remux the file to move 'moov' to the end, e.g. with `ffmpeg -i input.mp4 -c copy output.mp4` (without " +
+        "-movflags faststart) and retry on that file; or 2) use 'Fix video timestamp' + the whole GPX instead, which " +
+        "doesn't need this layout.",
+    },
+    warn: {
+      windowOutsideGpx: (v) =>
+        `Warning: the video window (${v.windowStart} → ${v.windowEnd}) falls outside the range covered by the GPX ` +
+        `(${v.gpxFirst} → ${v.gpxLast}). Proceeding anyway, but the crop may come out incomplete.`,
+    },
+    offsetHint: {
+      text: (v) => `Video/GPX misalignment: ${v.duration}`,
+      correctedSuffix: (v) => ` — corrected video start: ${v.iso}`,
+    },
+    map: {
+      streetLayer: "Map",
+      satelliteLayer: "Satellite",
+      startTooltip: "Start",
+      endTooltip: "End",
+    },
+  },
+};
+
+function detectBrowserLang() {
+  const candidates = (navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || "en"]);
+  for (const l of candidates) {
+    const base = String(l).slice(0, 2).toLowerCase();
+    if (SUPPORTED_LANGS.includes(base)) return base;
+  }
+  return "en";
+}
+
+function getStoredLang() {
+  try { return localStorage.getItem(LANG_KEY); } catch (e) { return null; }
+}
+function setStoredLang(value) {
+  try {
+    if (value) localStorage.setItem(LANG_KEY, value);
+    else localStorage.removeItem(LANG_KEY);
+  } catch (e) { /* private browsing / storage disabled — choice just won't persist */ }
+}
+
+let currentLang = (() => {
+  const stored = getStoredLang();
+  return SUPPORTED_LANGS.includes(stored) ? stored : detectBrowserLang();
+})();
+
+/** Resolves a dot-path key (e.g. "step1.title") in the current language, falling back to English. */
+function t(key, vars) {
+  const path = key.split(".");
+  let node = I18N[currentLang];
+  for (const seg of path) node = node && node[seg];
+  if (node === undefined) {
+    node = I18N.en;
+    for (const seg of path) node = node && node[seg];
+  }
+  if (node === undefined) return key;
+  return typeof node === "function" ? node(vars || {}) : node;
+}
+
+/** Applies every data-i18n(-placeholder|-title|-html) element from the current language, plus <title>/meta. */
+function applyStaticTranslations() {
+  document.documentElement.lang = currentLang;
+  document.title = t("meta.pageTitle");
+  const descMeta = document.querySelector('meta[name="description"]');
+  if (descMeta) descMeta.setAttribute("content", t("meta.description"));
+
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    el.textContent = t(el.getAttribute("data-i18n"));
+  });
+  document.querySelectorAll("[data-i18n-html]").forEach((el) => {
+    el.innerHTML = t(el.getAttribute("data-i18n-html"));
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
+    el.placeholder = t(el.getAttribute("data-i18n-placeholder"));
+  });
+  document.querySelectorAll("[data-i18n-title]").forEach((el) => {
+    const label = t(el.getAttribute("data-i18n-title"));
+    el.title = label;
+    el.setAttribute("aria-label", label);
+  });
+
+  // These two mirror the chosen file's name once one is picked, so the generic sweep above
+  // must not clobber them — only show the translated prompt while nothing is loaded yet.
+  if (!currentVideoFile) videoFileName.textContent = t("step1.filePrompt");
+  if (!gpxDocText) gpxFileName.textContent = t("step2.filePrompt");
+}
+
+/* ---------------------------------------------------------------------- */
 /* Theme toggle (persisted override on top of the OS light/dark setting)  */
 /* ---------------------------------------------------------------------- */
 
@@ -183,7 +475,7 @@ function filenameCandidate(name) {
 async function analyzeVideo(file) {
   const moovBox = await findTopLevelBox(file, "moov");
   if (!moovBox) {
-    throw new Error("Box 'moov' non trovato: il file potrebbe non essere un MP4 valido o è ancora in fase di scrittura.");
+    throw new Error(t("error.moovNotFoundAnalyze"));
   }
   const moovBuf = await readSlice(file, moovBox.offset, moovBox.size);
   const { mvhd, editOffsets } = parseMoovBuffer(moovBuf);
@@ -203,7 +495,7 @@ const GPX_NS = "http://www.topografix.com/GPX/1/1";
 function parseGpxText(text) {
   const doc = new DOMParser().parseFromString(text, "application/xml");
   const errNode = doc.querySelector("parsererror");
-  if (errNode) throw new Error("GPX non valido: " + errNode.textContent.slice(0, 200));
+  if (errNode) throw new Error(t("error.gpxInvalid", { message: errNode.textContent.slice(0, 200) }));
   return doc;
 }
 
@@ -588,16 +880,7 @@ function buildCammSamplesFromGpx(points, windowStart, windowEnd) {
 /** Assembles the final MP4 Blob: original bytes up to 'moov' unchanged, then the new camm mdat, then the enlarged moov. */
 function buildCammEmbedBlob(file, moovBox, moovBufOriginal, movieTimescale, maxTrackId, samples) {
   if (moovBox.offset + moovBox.size !== file.size) {
-    throw new Error(
-      "Il box 'moov' (l'indice del file: tracce e posizione di ogni campione audio/video) non è l'ultimo blocco del file, " +
-      "ma precede i dati audio/video veri e propri (layout 'faststart'/web-optimized, tipico di video passati per un editor " +
-      "o esportati per lo streaming). Per aggiungere la traccia GPS senza ricodificare, questo strumento può solo accodare " +
-      "dati in fondo al file — operazione sicura solo se 'moov' è già l'ultimo blocco, perché altrimenti farlo crescere " +
-      "sposterebbe i dati audio/video esistenti invalidandone gli offset e corromperebbe il video. " +
-      "Puoi: 1) ri-muxare il file per spostare 'moov' in fondo, es. con `ffmpeg -i input.mp4 -c copy output.mp4` " +
-      "(senza -movflags faststart) e ritentare su quel file; oppure 2) usare 'Correggi orario video' + GPX intero, " +
-      "che non richiede questo layout."
-    );
+    throw new Error(t("error.moovNotLast"));
   }
 
   const mediaTimescale = Math.max(1000, movieTimescale);
@@ -685,6 +968,7 @@ const offsetInput = document.getElementById("offsetInput");
 const filenameCandidateEl = document.getElementById("filenameCandidate");
 const offsetHintEl = document.getElementById("offsetHint");
 const playbackRateSelect = document.getElementById("playbackRateSelect");
+const langSelect = document.getElementById("langSelect");
 
 const gpxInput = document.getElementById("gpxInput");
 const gpxFileName = document.getElementById("gpxFileName");
@@ -741,7 +1025,7 @@ function updateEmbedButtonState() {
   );
 }
 
-/** Formats a signed duration in seconds as e.g. "-2 min 15.0 s" or "1 h 3 min 2.5 s". */
+/** Formats a signed duration in seconds as e.g. "-2 min 15.0 s" or "1 h 3 min 2.5 s" (units kept language-neutral). */
 function formatDurationHuman(totalSeconds) {
   const sign = totalSeconds < 0 ? "-" : "";
   let s = Math.abs(totalSeconds);
@@ -757,10 +1041,10 @@ function formatDurationHuman(totalSeconds) {
 /** Live readout of the offset field: how big the video/GPX misalignment is, and the resulting corrected video start. */
 function updateOffsetHint() {
   const offsetSeconds = parseFloat(offsetInput.value) || 0;
-  let text = `Disallineamento video/GPX: ${formatDurationHuman(offsetSeconds)}`;
+  let text = t("offsetHint.text", { duration: formatDurationHuman(offsetSeconds) });
   const correctedStart = getCorrectedVideoStart();
   if (correctedStart) {
-    text += ` — inizio video corretto: ${formatIso(correctedStart)}`;
+    text += t("offsetHint.correctedSuffix", { iso: formatIso(correctedStart) });
   }
   offsetHintEl.textContent = text;
 }
@@ -839,7 +1123,7 @@ function ensureMap() {
   const satelliteWithLabels = L.layerGroup([satelliteLayer, satelliteLabels]);
 
   L.control.layers(
-    { "Mappa": streetLayer, "Satellite": satelliteWithLabels },
+    { [t("map.streetLayer")]: streetLayer, [t("map.satelliteLayer")]: satelliteWithLabels },
     {},
     { position: "topright" }
   ).addTo(map);
@@ -891,12 +1175,12 @@ function updateWindowHighlight() {
   if (startPos) {
     startMarker = L.circleMarker([startPos.lat, startPos.lon], {
       radius: 6, color: "#15803d", fillColor: "#15803d", fillOpacity: 1,
-    }).addTo(map).bindTooltip("Inizio");
+    }).addTo(map).bindTooltip(t("map.startTooltip"));
   }
   if (endPos) {
     endMarker = L.circleMarker([endPos.lat, endPos.lon], {
       radius: 6, color: "#b91c1c", fillColor: "#b91c1c", fillOpacity: 1,
-    }).addTo(map).bindTooltip("Fine");
+    }).addTo(map).bindTooltip(t("map.endTooltip"));
   }
 }
 
@@ -926,13 +1210,28 @@ playbackRateSelect.addEventListener("change", () => {
   videoPreview.playbackRate = parseFloat(playbackRateSelect.value) || 1;
 });
 
+/* ---- Language selector: "auto" tracks the browser language; a manual pick is persisted ---- */
+
+langSelect.value = getStoredLang() || "auto";
+
+langSelect.addEventListener("change", () => {
+  const value = langSelect.value;
+  setStoredLang(value === "auto" ? null : value);
+  currentLang = value === "auto" ? detectBrowserLang() : value;
+  applyStaticTranslations();
+  updateOffsetHint();
+  updateTimelineBar();
+});
+
+applyStaticTranslations();
+
 videoInput.addEventListener("change", async () => {
   const file = videoInput.files[0];
   if (!file) return;
   currentVideoFile = file;
   currentVideoMvhd = null;
   videoFileName.textContent = file.name;
-  setStatus(videoStatus, "Lettura dei metadati MP4 in corso…");
+  setStatus(videoStatus, t("status.readingVideoMeta"));
   filenameCandidateEl.textContent = "";
   downloadBtn.hidden = true;
   fixVideoDownloadBtn.hidden = true;
@@ -954,9 +1253,9 @@ videoInput.addEventListener("change", async () => {
     if (result.mvhd) {
       startInput.value = formatIso(result.mvhd.creationDate);
       durationInput.value = result.mvhd.durationSeconds.toFixed(3);
-      msg = `Rilevato dal container MP4: inizio ${formatIso(result.mvhd.creationDate)}, durata ${result.mvhd.durationSeconds.toFixed(3)} s.`;
+      msg = t("status.mvhdDetected", { start: formatIso(result.mvhd.creationDate), duration: result.mvhd.durationSeconds.toFixed(3) });
       if (result.editOffsets.length) {
-        msg += `\nAttenzione: trovate edit-list con offset non nullo (${result.editOffsets.join(", ")} unità) — l'inizio effettivo potrebbe differire leggermente.`;
+        msg += t("status.editListWarning", { offsets: result.editOffsets.join(", ") });
       }
       setStatus(videoStatus, msg, "ok");
     } else {
@@ -964,25 +1263,24 @@ videoInput.addEventListener("change", async () => {
       videoPreview.addEventListener("loadedmetadata", () => {
         if (!durationInput.value.trim() && Number.isFinite(videoPreview.duration)) {
           durationInput.value = videoPreview.duration.toFixed(3);
-          setStatus(videoStatus, `mvhd non leggibile: durata (${videoPreview.duration.toFixed(3)} s) presa dal player. Inserisci l'inizio manualmente.`, "warn");
+          setStatus(videoStatus, t("status.mvhdFallbackDuration", { duration: videoPreview.duration.toFixed(3) }), "warn");
           updateCropButtonState();
           updateEmbedButtonState();
           updateWindowHighlight();
           updateTimelineBar();
         }
       }, { once: true });
-      setStatus(videoStatus, "Impossibile leggere mvhd. Inserisci inizio e durata manualmente.", "warn");
+      setStatus(videoStatus, t("status.mvhdUnreadable"), "warn");
     }
 
     if (result.filenameCandidate) {
       const c = result.filenameCandidate;
       const pad = (n) => String(n).padStart(2, "0");
       const localStr = `${c.year}-${pad(c.month)}-${pad(c.day)}T${pad(c.hour)}:${pad(c.minute)}:${pad(c.second)}`;
-      filenameCandidateEl.innerHTML = `Nome file suggerisce (ora locale della camera): <strong>${localStr}</strong> — ` +
-        `se il fuso non è UTC, converti manualmente e correggi il campo "Inizio video" sopra.`;
+      filenameCandidateEl.innerHTML = t("hint.filenameCandidate", { localStr });
     }
   } catch (e) {
-    setStatus(videoStatus, "Errore: " + e.message, "error");
+    setStatus(videoStatus, t("error.generic", { message: e.message }), "error");
   }
   updateCropButtonState();
   updateFixVideoButtonState();
@@ -997,7 +1295,7 @@ gpxInput.addEventListener("change", async () => {
   const file = gpxInput.files[0];
   if (!file) return;
   gpxFileName.textContent = file.name;
-  setStatus(gpxStatus, "Lettura del GPX in corso…");
+  setStatus(gpxStatus, t("status.readingGpx"));
   downloadBtn.hidden = true;
   embedDownloadBtn.hidden = true;
   setStatus(embedStatus, "", "");
@@ -1010,7 +1308,7 @@ gpxInput.addEventListener("change", async () => {
       .filter(Boolean)
       .sort((a, b) => a.time - b.time);
 
-    if (points.length === 0) throw new Error("Nessun trackpoint con timestamp trovato nel file.");
+    if (points.length === 0) throw new Error(t("error.noTrackpoints"));
 
     gpxDocText = text;
     gpxAllPoints = points;
@@ -1018,7 +1316,7 @@ gpxInput.addEventListener("change", async () => {
 
     setStatus(
       gpxStatus,
-      `${points.length} trackpoint, dal ${formatIso(gpxPointsRange.first)} al ${formatIso(gpxPointsRange.last)}.`,
+      t("status.gpxLoaded", { count: points.length, first: formatIso(gpxPointsRange.first), last: formatIso(gpxPointsRange.last) }),
       "ok"
     );
 
@@ -1031,7 +1329,7 @@ gpxInput.addEventListener("change", async () => {
     gpxAllPoints = null;
     gpxPointsRange = null;
     timelineEl.hidden = true;
-    setStatus(gpxStatus, "Errore: " + e.message, "error");
+    setStatus(gpxStatus, t("error.generic", { message: e.message }), "error");
   }
   updateCropButtonState();
   updateEmbedButtonState();
@@ -1054,7 +1352,7 @@ cropBtn.addEventListener("click", () => {
 
   const win = getWindowFromInputs();
   if (!win) {
-    setStatus(cropStatus, "Inizio video e/o durata non validi: inizio in formato ISO 8601 (es. 2026-09-05T10:30:14.000Z), durata in secondi.", "error");
+    setStatus(cropStatus, t("error.invalidStartDuration"), "error");
     return;
   }
   const { start: windowStart, end: windowEnd } = win;
@@ -1062,8 +1360,12 @@ cropBtn.addEventListener("click", () => {
   if (gpxPointsRange && (windowStart < gpxPointsRange.first || windowEnd > gpxPointsRange.last)) {
     setStatus(
       cropStatus,
-      `Attenzione: la finestra video (${formatIso(windowStart)} → ${formatIso(windowEnd)}) esce dall'intervallo coperto dal GPX ` +
-      `(${formatIso(gpxPointsRange.first)} → ${formatIso(gpxPointsRange.last)}). Procedo comunque, ma il ritaglio potrebbe risultare incompleto.`,
+      t("warn.windowOutsideGpx", {
+        windowStart: formatIso(windowStart),
+        windowEnd: formatIso(windowEnd),
+        gpxFirst: formatIso(gpxPointsRange.first),
+        gpxLast: formatIso(gpxPointsRange.last),
+      }),
       "warn"
     );
   }
@@ -1073,7 +1375,7 @@ cropBtn.addEventListener("click", () => {
     const { stats, firstTime, lastTime } = cropGpxDoc(doc, windowStart, windowEnd);
 
     if (stats.croppedPoints === 0) {
-      setStatus(cropStatus, "Nessun punto trovato nella finestra indicata: controlla inizio/durata/offset.", "error");
+      setStatus(cropStatus, t("error.noPointsInWindowCrop"), "error");
       return;
     }
 
@@ -1089,12 +1391,17 @@ cropBtn.addEventListener("click", () => {
     const actualDuration = (lastTime - firstTime) / 1000;
     setStatus(
       cropStatus,
-      `${stats.croppedPoints} punti nel ritaglio (di cui ${stats.interpolatedPoints} interpolati ai bordi), ` +
-      `da ${formatIso(firstTime)} a ${formatIso(lastTime)} — durata ${actualDuration.toFixed(3)} s.`,
+      t("status.cropSuccess", {
+        cropped: stats.croppedPoints,
+        interpolated: stats.interpolatedPoints,
+        first: formatIso(firstTime),
+        last: formatIso(lastTime),
+        duration: actualDuration.toFixed(3),
+      }),
       "ok"
     );
   } catch (e) {
-    setStatus(cropStatus, "Errore durante il ritaglio: " + e.message, "error");
+    setStatus(cropStatus, t("error.cropFailed", { message: e.message }), "error");
   }
 });
 
@@ -1109,11 +1416,11 @@ fixVideoBtn.addEventListener("click", () => {
 
   const correctedStart = getCorrectedVideoStart();
   if (!correctedStart) {
-    setStatus(fixVideoStatus, "Inizio video non valido: usa formato ISO 8601 (es. 2026-09-05T10:30:14.000Z).", "error");
+    setStatus(fixVideoStatus, t("error.invalidVideoStart"), "error");
     return;
   }
   if (!currentVideoFile || !currentVideoMvhd || currentVideoMvhd.creationTimeFileOffset == null) {
-    setStatus(fixVideoStatus, "Metadati mvhd non disponibili per questo video: impossibile correggere l'orario senza ricodificarlo.", "error");
+    setStatus(fixVideoStatus, t("error.noMvhdForFix"), "error");
     return;
   }
 
@@ -1121,7 +1428,7 @@ fixVideoBtn.addEventListener("click", () => {
   const rawValue = Math.round(correctedStart.getTime() / 1000 - MP4_EPOCH_OFFSET_SECONDS);
 
   if (rawValue < 0 || (size === 4 && rawValue > 0xFFFFFFFF)) {
-    setStatus(fixVideoStatus, "Data fuori dall'intervallo rappresentabile nei metadati MP4 di questo file.", "error");
+    setStatus(fixVideoStatus, t("error.dateOutOfRange"), "error");
     return;
   }
 
@@ -1145,12 +1452,7 @@ fixVideoBtn.addEventListener("click", () => {
   fixVideoDownloadBtn.download = `${baseName}_synced.mp4`;
   fixVideoDownloadBtn.hidden = false;
 
-  setStatus(
-    fixVideoStatus,
-    `Creation time del video corretto a ${formatIso(correctedStart)} (arrotondato al secondo, come richiesto dal formato MP4). ` +
-    `Il file GPX resta intero e non modificato.`,
-    "ok"
-  );
+  setStatus(fixVideoStatus, t("status.fixSuccess", { correctedStart: formatIso(correctedStart) }), "ok");
 });
 
 /**
@@ -1163,30 +1465,30 @@ embedBtn.addEventListener("click", async () => {
 
   const win = getWindowFromInputs();
   if (!win) {
-    setStatus(embedStatus, "Inizio video e/o durata non validi: inizio in formato ISO 8601 (es. 2026-09-05T10:30:14.000Z), durata in secondi.", "error");
+    setStatus(embedStatus, t("error.invalidStartDuration"), "error");
     return;
   }
   if (!currentVideoFile || !currentVideoMvhd || currentVideoMvhd.creationTimeFileOffset == null) {
-    setStatus(embedStatus, "Metadati mvhd non disponibili per questo video: impossibile incorporare la traccia GPS.", "error");
+    setStatus(embedStatus, t("error.noMvhdForEmbed"), "error");
     return;
   }
   if (!gpxAllPoints) {
-    setStatus(embedStatus, "Carica prima un file GPX.", "error");
+    setStatus(embedStatus, t("error.noGpxLoaded"), "error");
     return;
   }
 
-  setStatus(embedStatus, "Costruzione della traccia CAMM in corso…");
+  setStatus(embedStatus, t("status.buildingCamm"));
 
   try {
     const samples = buildCammSamplesFromGpx(gpxAllPoints, win.start, win.end);
     if (samples.length < 2) {
-      setStatus(embedStatus, "Nessun punto GPX trovato nella finestra del video: controlla inizio/durata/offset.", "error");
+      setStatus(embedStatus, t("error.noPointsInWindowEmbed"), "error");
       return;
     }
 
     const file = currentVideoFile;
     const moovBox = await findTopLevelBox(file, "moov");
-    if (!moovBox) throw new Error("Box 'moov' non trovato.");
+    if (!moovBox) throw new Error(t("error.moovNotFoundSimple"));
     const moovBufOriginal = await readSlice(file, moovBox.offset, moovBox.size);
     const maxTrackId = findMaxTrackId(moovBufOriginal);
 
@@ -1200,11 +1502,10 @@ embedBtn.addEventListener("click", async () => {
 
     setStatus(
       embedStatus,
-      `Traccia CAMM aggiunta con ${samples.length} punti GPS (da ${formatIso(win.start)} a ${formatIso(win.end)}). ` +
-      `Video e audio originali non sono stati ricodificati, e il file GPX resta intero e non modificato.`,
+      t("status.embedSuccess", { count: samples.length, start: formatIso(win.start), end: formatIso(win.end) }),
       "ok"
     );
   } catch (e) {
-    setStatus(embedStatus, "Errore: " + e.message, "error");
+    setStatus(embedStatus, t("error.generic", { message: e.message }), "error");
   }
 });

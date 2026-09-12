@@ -8,6 +8,10 @@ Tutto avviene **client-side**, nel browser: nessun file viene caricato su un ser
 può essere anche molto grande (più GB) perché viene letto tramite `File.slice()` — in memoria
 finiscono solo i pochi byte necessari a leggere gli header dei box MP4, mai l'intero file.
 
+L'interfaccia rileva automaticamente la lingua del browser (italiano o inglese, con l'inglese
+come ripiego per qualunque altra lingua) e può essere forzata manualmente dal menu in alto a
+destra; c'è anche un tema chiaro/scuro esplicito, oltre a quello automatico da sistema.
+
 Include anche un'**anteprima video** e una **mappa** (Leaflet, con vista stradale OpenStreetMap
 o satellitare Esri World Imagery), affiancate in due riquadri 16:9. La mappa mostra la traccia
 completa, il tratto coperto dal video evidenziato, e un marcatore che avanza in tempo reale

@@ -114,10 +114,25 @@ body {
   font-size: 0.95rem;
 }
 
-.theme-toggle {
+.header-controls {
   position: absolute;
   top: 1.25rem;
   right: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.lang-select {
+  height: 2.25rem;
+  padding: 0 0.5rem;
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  font-size: 0.8rem;
+}
+
+.theme-toggle {
   width: 2.25rem;
   height: 2.25rem;
   padding: 0;
@@ -139,6 +154,14 @@ body {
 .theme-toggle .icon {
   width: 1.15em;
   height: 1.15em;
+}
+
+@media (max-width: 480px) {
+  .header-controls {
+    position: static;
+    justify-content: center;
+    margin-bottom: 0.75rem;
+  }
 }
 
 main {
