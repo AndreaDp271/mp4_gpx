@@ -245,6 +245,22 @@ button:disabled {
   margin-top: 1rem;
 }
 
+.export-option + .export-option {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.export-option h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+#fixVideoDownloadBtn {
+  margin-top: 1rem;
+}
+
 .preview-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

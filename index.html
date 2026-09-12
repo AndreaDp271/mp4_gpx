@@ -11,7 +11,7 @@
 <body>
 <header class="page-header">
   <h1>GPX / Video Sync</h1>
-  <p class="subtitle">Ritaglia una traccia GPX esattamente sulla durata di un video, allineando i timestamp. Tutto avviene nel tuo browser: nessun file viene caricato su un server.</p>
+  <p class="subtitle">Sincronizza GPX e video: ritaglia la traccia sulla durata del video, oppure correggi l'orario nei metadati del video lasciando il GPX intero. Tutto avviene nel tuo browser: nessun file viene caricato su un server.</p>
 </header>
 
 <main>
@@ -75,10 +75,22 @@
   </section>
 
   <section class="card" id="step-crop">
-    <h2><span class="step-num">4</span> Ritaglia e scarica</h2>
-    <button id="cropBtn" disabled>Ritaglia GPX</button>
-    <div id="cropStatus" class="status"></div>
-    <a id="downloadBtn" class="button-link" hidden download>Scarica GPX ritagliato</a>
+    <h2><span class="step-num">4</span> Sincronizza e scarica</h2>
+
+    <div class="export-option">
+      <h3>Ritaglia il GPX sulla durata del video</h3>
+      <button id="cropBtn" disabled>Ritaglia GPX</button>
+      <div id="cropStatus" class="status"></div>
+      <a id="downloadBtn" class="button-link" hidden download>Scarica GPX ritagliato</a>
+    </div>
+
+    <div class="export-option">
+      <h3>In alternativa: correggi l'orario del video</h3>
+      <p class="hint" style="margin-top: 0;">Il GPX resta intero, senza alcun ritaglio. Viene invece corretto il "creation time" nei metadati del container MP4, in modo che l'inizio del video combaci con l'inizio + offset impostati sopra.</p>
+      <button id="fixVideoBtn" disabled>Correggi orario video</button>
+      <div id="fixVideoStatus" class="status"></div>
+      <a id="fixVideoDownloadBtn" class="button-link" hidden download>Scarica video con orario corretto</a>
+    </div>
   </section>
 </main>
 

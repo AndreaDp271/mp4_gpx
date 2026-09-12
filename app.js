@@ -58,6 +58,8 @@ function parseMvhd(dv, pos, headerLen) {
   let p = pos + headerLen;
   const version = dv.getUint8(p);
   p += 4; // version (1 byte) + flags (3 bytes)
+  const creationTimeOffset = p; // relative to the moov buffer — kept so creation_time can be patched in place later
+  const creationTimeSize = version === 1 ? 8 : 4;
   let creationTime, timescale, duration;
   if (version === 1) {
     creationTime = Number(dv.getBigUint64(p)); p += 8;
@@ -71,7 +73,7 @@ function parseMvhd(dv, pos, headerLen) {
     duration = dv.getUint32(p); p += 4;
   }
   const creationDate = new Date((MP4_EPOCH_OFFSET_SECONDS + creationTime) * 1000);
-  return { creationDate, timescale, duration, durationSeconds: duration / timescale };
+  return { creationDate, timescale, duration, durationSeconds: duration / timescale, creationTimeOffset, creationTimeSize };
 }
 
 function parseElstFirstOffset(dv, pos, headerLen) {
@@ -142,6 +144,10 @@ async function analyzeVideo(file) {
   }
   const moovBuf = await readSlice(file, moovBox.offset, moovBox.size);
   const { mvhd, editOffsets } = parseMoovBuffer(moovBuf);
+  if (mvhd) {
+    // Absolute offset in the original file where creation_time lives, for in-place patching.
+    mvhd.creationTimeFileOffset = moovBox.offset + mvhd.creationTimeOffset;
+  }
   return { mvhd, editOffsets, filenameCandidate: filenameCandidate(file.name) };
 }
 
@@ -405,6 +411,9 @@ const previewSection = document.getElementById("step-preview");
 const cropBtn = document.getElementById("cropBtn");
 const cropStatus = document.getElementById("cropStatus");
 const downloadBtn = document.getElementById("downloadBtn");
+const fixVideoBtn = document.getElementById("fixVideoBtn");
+const fixVideoStatus = document.getElementById("fixVideoStatus");
+const fixVideoDownloadBtn = document.getElementById("fixVideoDownloadBtn");
 const timelineEl = document.getElementById("timeline");
 const timelineWindowEl = document.getElementById("timelineWindow");
 const timelineFullStart = document.getElementById("timelineFullStart");
@@ -415,6 +424,7 @@ let gpxPointsRange = null; // {first: Date, last: Date}
 let gpxAllPoints = null; // sorted [{time, lat, lon, ...}] across the whole GPX, used by the map
 let currentVideoFile = null;
 let currentVideoObjectUrl = null;
+let currentVideoMvhd = null; // {creationDate, timescale, duration, durationSeconds, creationTimeFileOffset, creationTimeSize}, or null if unreadable
 
 function setStatus(el, text, kind) {
   el.textContent = text;
@@ -425,14 +435,29 @@ function updateCropButtonState() {
   cropBtn.disabled = !(gpxDocText && startInput.value.trim() && durationInput.value.trim());
 }
 
-/** Reads start/duration/offset from the form; returns {start, end} Dates, or null if incomplete/invalid. */
-function getWindowFromInputs() {
+function updateFixVideoButtonState() {
+  fixVideoBtn.disabled = !(
+    currentVideoFile &&
+    currentVideoMvhd &&
+    currentVideoMvhd.creationTimeFileOffset != null &&
+    getCorrectedVideoStart()
+  );
+}
+
+/** Reads start+offset from the form; returns the offset-corrected start Date, or null if incomplete/invalid. */
+function getCorrectedVideoStart() {
   const startTime = new Date(startInput.value.trim());
   if (Number.isNaN(startTime.getTime())) return null;
+  const offsetSeconds = parseFloat(offsetInput.value) || 0;
+  return new Date(startTime.getTime() + offsetSeconds * 1000);
+}
+
+/** Reads start/duration/offset from the form; returns {start, end} Dates, or null if incomplete/invalid. */
+function getWindowFromInputs() {
+  const start = getCorrectedVideoStart();
+  if (!start) return null;
   const durationSeconds = parseDurationSeconds(durationInput.value);
   if (Number.isNaN(durationSeconds) || durationSeconds <= 0) return null;
-  const offsetSeconds = parseFloat(offsetInput.value) || 0;
-  const start = new Date(startTime.getTime() + offsetSeconds * 1000);
   const end = new Date(start.getTime() + durationSeconds * 1000);
   return { start, end };
 }
@@ -580,10 +605,13 @@ videoInput.addEventListener("change", async () => {
   const file = videoInput.files[0];
   if (!file) return;
   currentVideoFile = file;
+  currentVideoMvhd = null;
   videoFileName.textContent = file.name;
   setStatus(videoStatus, "Lettura dei metadati MP4 in corso…");
   filenameCandidateEl.textContent = "";
   downloadBtn.hidden = true;
+  fixVideoDownloadBtn.hidden = true;
+  setStatus(fixVideoStatus, "", "");
 
   if (currentVideoObjectUrl) URL.revokeObjectURL(currentVideoObjectUrl);
   currentVideoObjectUrl = URL.createObjectURL(file);
@@ -593,6 +621,7 @@ videoInput.addEventListener("change", async () => {
 
   try {
     const result = await analyzeVideo(file);
+    currentVideoMvhd = result.mvhd;
     let msg = "";
     if (result.mvhd) {
       startInput.value = formatIso(result.mvhd.creationDate);
@@ -627,6 +656,7 @@ videoInput.addEventListener("change", async () => {
     setStatus(videoStatus, "Errore: " + e.message, "error");
   }
   updateCropButtonState();
+  updateFixVideoButtonState();
   updateWindowHighlight();
   updateTimelineBar();
   syncLiveMarkerFromVideo();
@@ -675,6 +705,7 @@ gpxInput.addEventListener("change", async () => {
 
 [startInput, durationInput, offsetInput].forEach((el) => el.addEventListener("input", () => {
   updateCropButtonState();
+  updateFixVideoButtonState();
   updateWindowHighlight();
   updateTimelineBar();
   syncLiveMarkerFromVideo();
@@ -727,4 +758,59 @@ cropBtn.addEventListener("click", () => {
   } catch (e) {
     setStatus(cropStatus, "Errore durante il ritaglio: " + e.message, "error");
   }
+});
+
+/**
+ * Patches the video's own MP4 `creation_time` (in the mvhd box) to the offset-corrected
+ * start time, in place, without re-encoding or touching the GPX. Since the field's byte
+ * width doesn't change, every other offset in the file (stco/co64 sample tables included)
+ * stays valid.
+ */
+fixVideoBtn.addEventListener("click", () => {
+  fixVideoDownloadBtn.hidden = true;
+
+  const correctedStart = getCorrectedVideoStart();
+  if (!correctedStart) {
+    setStatus(fixVideoStatus, "Inizio video non valido: usa formato ISO 8601 (es. 2026-09-05T10:30:14.000Z).", "error");
+    return;
+  }
+  if (!currentVideoFile || !currentVideoMvhd || currentVideoMvhd.creationTimeFileOffset == null) {
+    setStatus(fixVideoStatus, "Metadati mvhd non disponibili per questo video: impossibile correggere l'orario senza ricodificarlo.", "error");
+    return;
+  }
+
+  const { creationTimeFileOffset: offset, creationTimeSize: size } = currentVideoMvhd;
+  const rawValue = Math.round(correctedStart.getTime() / 1000 - MP4_EPOCH_OFFSET_SECONDS);
+
+  if (rawValue < 0 || (size === 4 && rawValue > 0xFFFFFFFF)) {
+    setStatus(fixVideoStatus, "Data fuori dall'intervallo rappresentabile nei metadati MP4 di questo file.", "error");
+    return;
+  }
+
+  const patchBuf = new ArrayBuffer(size);
+  const patchDv = new DataView(patchBuf);
+  if (size === 8) {
+    patchDv.setBigUint64(0, BigInt(rawValue), false);
+  } else {
+    patchDv.setUint32(0, rawValue, false);
+  }
+
+  const file = currentVideoFile;
+  const patchedBlob = new Blob(
+    [file.slice(0, offset), patchBuf, file.slice(offset + size, file.size)],
+    { type: file.type || "video/mp4" }
+  );
+
+  const url = URL.createObjectURL(patchedBlob);
+  const baseName = file.name.replace(/\.[^.]+$/, "");
+  fixVideoDownloadBtn.href = url;
+  fixVideoDownloadBtn.download = `${baseName}_synced.mp4`;
+  fixVideoDownloadBtn.hidden = false;
+
+  setStatus(
+    fixVideoStatus,
+    `Creation time del video corretto a ${formatIso(correctedStart)} (arrotondato al secondo, come richiesto dal formato MP4). ` +
+    `Il file GPX resta intero e non modificato.`,
+    "ok"
+  );
 });
